@@ -1,0 +1,1 @@
+const {Pool}=require('pg'); const pool=new Pool({user:'etms',password:'aaku28',database:'etms',port:5432}); pool.query(\"SELECT column_name, column_default, is_nullable FROM information_schema.columns WHERE table_name = 'users';\").then(res => { console.log(res.rows); pool.end(); })

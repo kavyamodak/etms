@@ -1,0 +1,218 @@
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { User, Lock, ArrowLeft, Bus } from 'lucide-react';
+import { Button } from './ui/button';
+import { Input } from './ui/input';
+import { Checkbox } from './ui/checkbox';
+import { useAuth } from '../context/AuthContext';
+import { authAPI } from '../services/api';
+import { useNotify } from '../context/NotificationContext';
+
+export default function TranzoLoginPage() {
+  const navigate = useNavigate();
+  const { login, isAuthenticated, user } = useAuth();
+  const notify = useNotify();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  // Check for URL errors (e.g. from failed Google OAuth)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlError = params.get('error');
+    const urlMessage = params.get('message');
+    if (urlError === 'oauth_error') {
+      notify.error(`Google login failed. Please ensure your Google app is configured correctly. ${urlMessage ? `(${urlMessage})` : ''}`);
+    } else if (urlError === 'google_failed') {
+      notify.error('Google authentication failed or was cancelled.');
+    }
+  }, []);
+
+  // No useEffect redirect needed — navigation handled directly in handleLogin
+
+  const getDestination = (role: string) => {
+    const needsOnboarding = sessionStorage.getItem('needsOnboarding') === '1';
+    if (role === 'admin') return '/admin';
+    if (needsOnboarding) return role === 'driver' ? '/driver-details' : '/employee-details';
+    return role === 'driver' ? '/driver' : '/user';
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsLoading(true);
+
+    const loadingId = notify.loading('Checking your account...');
+    try {
+      // Step 1: Validate email exists in database
+      const { exists } = await authAPI.checkEmail(email);
+      if (!exists) {
+        notify.updateNotification(loadingId, {
+          message: 'No account found with this email address. Please check your email or sign up.',
+          type: 'error',
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      // Step 2: Attempt login with password
+      notify.updateNotification(loadingId, { message: 'Verifying your password...', type: 'loading' });
+      await login(email, password, rememberMe);
+
+      // Step 3: Success — show premium toast then navigate
+      notify.updateNotification(loadingId, {
+        message: 'Welcome back! Login successful. Your dashboard is loading...',
+        type: 'success',
+        duration: 4000, // Keep visible for 4 seconds for premium feel
+      });
+
+      // Delayed redirect to let the animation play out and the user celebrate the login
+      setTimeout(() => {
+        const storedUser = JSON.parse(
+          sessionStorage.getItem('authUser') || localStorage.getItem('authUser') || 'null'
+        );
+        const dest = getDestination(storedUser?.role || 'employee');
+        window.location.replace(dest);
+      }, 3000); // 3 second delay for better visibility
+    } catch (err: any) {
+      const msg = err.message?.includes('fetch')
+        ? 'Cannot connect to server. Please ensure the backend is running.'
+        : err.message || 'Invalid password. Please try again.';
+      notify.updateNotification(loadingId, { message: msg, type: 'error' });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Google Login
+  const handleGoogleLogin = () => {
+    authAPI.googleLogin();
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-50 via-white to-teal-50 p-4">
+      {/* Back to Home */}
+      <button
+        onClick={() => navigate('/')}
+        className="fixed top-4 left-4 z-50 flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors"
+      >
+        <ArrowLeft className="w-5 h-5" />
+        <span>Back to Home</span>
+      </button>
+
+      {/* Login Container */}
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-8 md:p-12">
+        {/* Logo */}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl mb-6">
+            <Bus className="w-8 h-8 text-white" />
+            <h1 className="text-2xl text-white">TRANZO</h1>
+          </div>
+          <h2 className="text-gray-800 mb-2">Welcome Back</h2>
+          <p className="text-gray-500">Sign in to access your dashboard</p>
+        </div>
+
+        {/* Google Sign In */}
+        <Button
+          type="button"
+          onClick={handleGoogleLogin}
+          className="w-full bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 rounded-xl h-12 flex items-center justify-center gap-3 transition-colors shadow-sm mb-6"
+        >
+          <svg className="w-5 h-5" viewBox="0 0 24 24">
+            <path
+              d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+              fill="#4285F4"
+            />
+            <path
+              d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+              fill="#34A853"
+            />
+            <path
+              d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
+              fill="#FBBC05"
+            />
+            <path
+              d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
+              fill="#EA4335"
+            />
+          </svg>
+          Continue with Google
+        </Button>
+
+        <div className="relative my-6 mb-8">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-gray-200"></div>
+          </div>
+          <div className="relative flex justify-center text-sm">
+            <span className="px-2 bg-white text-gray-500">Or sign in with email</span>
+          </div>
+        </div>
+
+        {/* Email Login Form */}
+        <form onSubmit={handleLogin} className="space-y-5">
+          <div className="relative">
+            <User className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Input
+              type="email"
+              placeholder="EMAIL ADDRESS"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="pl-12 h-12 rounded-xl border-gray-300 bg-gray-50 placeholder:text-gray-400"
+              required
+            />
+          </div>
+
+          <div className="relative">
+            <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <Input
+              type="password"
+              placeholder="PASSWORD"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="pl-12 h-12 rounded-xl border-gray-300 bg-gray-50 placeholder:text-gray-400"
+              required
+            />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="remember"
+                checked={rememberMe}
+                onCheckedChange={(checked: boolean) => setRememberMe(checked as boolean)}
+              />
+              <label htmlFor="remember" className="text-sm text-gray-600 cursor-pointer">
+                Remember me
+              </label>
+            </div>
+            <a
+              href="/forgot-password"
+              className="text-sm text-blue-600 hover:text-blue-700"
+            >
+              Forgot Password?
+            </a>
+          </div>
+
+          <Button
+            type="submit"
+            className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-xl h-12 shadow-lg"
+            disabled={isLoading}
+          >
+            {isLoading ? '⏳ Signing In...' : 'SIGN IN'}
+          </Button>
+        </form>
+
+        {/* Sign Up Link */}
+        <p className="text-center text-gray-500 mt-6 text-sm">
+          Don't have an account?{' '}
+          <a
+            href="/signup"
+            className="text-emerald-600 hover:text-emerald-700 font-medium"
+          >
+            Sign Up
+          </a>
+        </p>
+      </div>
+    </div>
+  );
+}
