@@ -10,7 +10,7 @@ import { useNotify } from '../context/NotificationContext';
 
 export default function TranzoLoginPage() {
   const navigate = useNavigate();
-  const { login, isAuthenticated, user } = useAuth();
+  const { login } = useAuth();
   const notify = useNotify();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -57,23 +57,17 @@ export default function TranzoLoginPage() {
 
       // Step 2: Attempt login with password
       notify.updateNotification(loadingId, { message: 'Verifying your password...', type: 'loading' });
-      await login(email, password, rememberMe);
+      const loggedInUser = await login(email, password, rememberMe);
+      const destination = getDestination(loggedInUser.role);
 
       // Step 3: Success — show premium toast then navigate
       notify.updateNotification(loadingId, {
-        message: 'Welcome back! Login successful. Your dashboard is loading...',
+        message: 'Welcome back! Redirecting to your dashboard...',
         type: 'success',
-        duration: 4000, // Keep visible for 4 seconds for premium feel
+        duration: 2000,
       });
 
-      // Delayed redirect to let the animation play out and the user celebrate the login
-      setTimeout(() => {
-        const storedUser = JSON.parse(
-          sessionStorage.getItem('authUser') || localStorage.getItem('authUser') || 'null'
-        );
-        const dest = getDestination(storedUser?.role || 'employee');
-        window.location.replace(dest);
-      }, 3000); // 3 second delay for better visibility
+      navigate(destination, { replace: true });
     } catch (err: any) {
       const msg = err.message?.includes('fetch')
         ? 'Cannot connect to server. Please ensure the backend is running.'

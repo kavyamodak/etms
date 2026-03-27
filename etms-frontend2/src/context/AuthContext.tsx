@@ -13,7 +13,7 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string, rememberMe: boolean) => Promise<void>;
+  login: (email: string, password: string, rememberMe: boolean) => Promise<User>;
   signup: (data: any) => Promise<any>;
   verifyOTP: (email: string, otp: string) => Promise<any>;
   updateUser: (updates: Partial<User>) => void;
@@ -166,6 +166,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setToken(response.token);
       setUser(userData);
+      return userData;
     } catch (error) {
       console.error('❌ Login failed:', error);
       throw error;

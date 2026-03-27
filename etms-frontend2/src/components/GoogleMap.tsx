@@ -45,6 +45,50 @@ export default function GoogleMap({
   const markersRef = useRef<google.maps.Marker[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
+  const isValidCoordinate = (value: unknown): value is { lat: number; lng: number } => {
+    if (!value || typeof value !== "object") return false;
+    const candidate = value as { lat?: unknown; lng?: unknown };
+    return typeof candidate.lat === "number" && Number.isFinite(candidate.lat)
+      && typeof candidate.lng === "number" && Number.isFinite(candidate.lng);
+  };
+
+  const clearRouteMarkers = () => {
+    markersRef.current.forEach((marker: google.maps.Marker) => marker.setMap(null));
+    markersRef.current = [];
+  };
+
+  const clearRenderedRoute = () => {
+    clearRouteMarkers();
+    directionsRendererRef.current?.setDirections({ routes: [] } as unknown as google.maps.DirectionsResult);
+  };
+
+  const addRouteMarker = (
+    position: google.maps.LatLng | google.maps.LatLngLiteral,
+    text: string,
+    title: string,
+    color: string,
+    scale: number
+  ) => {
+    if (!googleMapRef.current) return;
+
+    const marker = new google.maps.Marker({
+      position,
+      map: googleMapRef.current,
+      label: { text, color: "white", fontWeight: "bold" },
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        fillColor: color,
+        fillOpacity: 1,
+        strokeColor: "#ffffff",
+        strokeWeight: 2,
+        scale,
+      },
+      title,
+    });
+
+    markersRef.current.push(marker);
+  };
+
   useEffect(() => {
     // Correct way to wait for SDK in v2.x
     configureSDK();
@@ -159,81 +203,52 @@ export default function GoogleMap({
   const renderRoute = () => {
     if (!googleMapRef.current || !directionsRendererRef.current) return;
 
+    if (!origin || !destination) {
+      clearRenderedRoute();
+      return;
+    }
+
+    const resolvedOrigin = typeof origin === 'string' ? origin : (isValidCoordinate(origin) ? origin : null);
+    const resolvedDestination = typeof destination === 'string' ? destination : (isValidCoordinate(destination) ? destination : null);
+    const resolvedWaypoints = waypoints
+      .map((wp) => ({
+        location: typeof wp.location === 'string' ? wp.location : (isValidCoordinate(wp.location) ? wp.location : null),
+        stopover: wp.stopover
+      }))
+      .filter((wp) => wp.location);
+
+    if (!resolvedOrigin || !resolvedDestination) {
+      clearRenderedRoute();
+      return;
+    }
+
     const directionsService = new google.maps.DirectionsService();
+    const geocoder = new google.maps.Geocoder();
 
     directionsService.route(
       {
-        origin: typeof origin === 'string' ? origin : origin,
-        destination: typeof destination === 'string' ? destination : destination,
-        waypoints: waypoints.map(wp => ({
-            location: typeof wp.location === 'string' ? wp.location : wp.location,
-            stopover: wp.stopover
-        })),
+        origin: resolvedOrigin,
+        destination: resolvedDestination,
+        waypoints: resolvedWaypoints as { location: string | { lat: number; lng: number }; stopover: boolean }[],
         travelMode: google.maps.TravelMode.DRIVING
       },
       (result: google.maps.DirectionsResult | null, status: google.maps.DirectionsStatus) => {
         if (status === google.maps.DirectionsStatus.OK && result) {
           directionsRendererRef.current?.setDirections(result);
-          
-          // Clear previous markers
-          markersRef.current.forEach((m: google.maps.Marker) => m.setMap(null));
-          markersRef.current = [];
+          clearRouteMarkers();
 
           const route = result.routes[0];
           const legs = route.legs;
           
-          // Add Start Marker
-          const startMarker = new google.maps.Marker({
-            position: legs[0].start_location,
-            map: googleMapRef.current!,
-            label: { text: "P", color: "white", fontWeight: "bold" },
-            icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                fillColor: "#10b981",
-                fillOpacity: 1,
-                strokeColor: "#ffffff",
-                strokeWeight: 2,
-                scale: 12
-            },
-            title: "Pickup"
-          });
-          markersRef.current.push(startMarker);
+          addRouteMarker(legs[0].start_location, "P", "Pickup", "#10b981", 12);
 
           // Add waypoints markers
           for (let i = 0; i < legs.length - 1; i++) {
-              const marker = new google.maps.Marker({
-                  position: legs[i].end_location,
-                  map: googleMapRef.current!,
-                  label: { text: (i + 1).toString(), color: "white", fontWeight: "bold" },
-                  icon: {
-                      path: google.maps.SymbolPath.CIRCLE,
-                      fillColor: "#3b82f6",
-                      fillOpacity: 1,
-                      strokeColor: "#ffffff",
-                      strokeWeight: 2,
-                      scale: 10
-                  },
-                  title: `Stop ${i + 1}`
-              });
-              markersRef.current.push(marker);
+            addRouteMarker(legs[i].end_location, (i + 1).toString(), `Stop ${i + 1}`, "#3b82f6", 10);
           }
 
           // Add Destination Marker
-          const endMarker = new google.maps.Marker({
-            position: legs[legs.length - 1].end_location,
-            map: googleMapRef.current!,
-            label: { text: "D", color: "white", fontWeight: "bold" },
-            icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                fillColor: "#ef4444",
-                fillOpacity: 1,
-                strokeColor: "#ffffff",
-                strokeWeight: 2,
-                scale: 12
-            },
-            title: "Destination"
-          });
-          markersRef.current.push(endMarker);
+          addRouteMarker(legs[legs.length - 1].end_location, "D", "Destination", "#ef4444", 12);
  
           // Calculate total distance and duration
           let totalDistance = 0;
@@ -251,7 +266,57 @@ export default function GoogleMap({
               durationValue: totalDuration
             });
           }
+          return;
         }
+
+        console.warn("Directions rendering failed, using marker fallback:", status);
+        clearRenderedRoute();
+
+        const stops = [
+          { location: origin, text: "P", title: "Pickup", color: "#10b981", scale: 12 },
+          ...waypoints.map((wp, index) => ({
+            location: wp.location,
+            text: String(index + 1),
+            title: `Stop ${index + 1}`,
+            color: "#3b82f6",
+            scale: 10,
+          })),
+          { location: destination, text: "D", title: "Destination", color: "#ef4444", scale: 12 },
+        ];
+
+        const bounds = new google.maps.LatLngBounds();
+        let pending = stops.length;
+
+        const onResolved = () => {
+          pending -= 1;
+          if (pending === 0 && !bounds.isEmpty()) {
+            googleMapRef.current?.fitBounds(bounds, 48);
+          }
+        };
+
+        const resolveStop = (
+          stop: { location: string | { lat: number; lng: number }; text: string; title: string; color: string; scale: number }
+        ) => {
+          if (typeof stop.location !== "string") {
+            addRouteMarker(stop.location, stop.text, stop.title, stop.color, stop.scale);
+            bounds.extend(stop.location);
+            onResolved();
+            return;
+          }
+
+          geocoder.geocode({ address: stop.location }, (results, geocodeStatus) => {
+            if (geocodeStatus === "OK" && results?.[0]?.geometry?.location) {
+              const position = results[0].geometry.location;
+              addRouteMarker(position, stop.text, stop.title, stop.color, stop.scale);
+              bounds.extend(position);
+            } else {
+              console.warn(`Fallback geocoding failed for ${stop.title}:`, geocodeStatus);
+            }
+            onResolved();
+          });
+        };
+
+        stops.forEach(resolveStop);
       }
     );
   };

@@ -22,6 +22,10 @@ interface Route {
   route_name: string;
   start_location: string;
   end_location: string;
+  start_lat?: number | null;
+  start_lng?: number | null;
+  end_lat?: number | null;
+  end_lng?: number | null;
   distance?: number;
   estimated_duration?: number;
   status: string;
@@ -159,12 +163,13 @@ function AdminMapModal({ route, onClose }: { route: Route; onClose: () => void }
 function RouteDetailModal({ routeId, onClose }: { routeId: number; onClose: () => void }) {
   const [details, setDetails] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const authToken = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
 
   useEffect(() => {
     const fetchDetails = async () => {
       try {
         const res = await fetch(`${(import.meta as any).env.VITE_API_URL || 'http://localhost:5000/api'}/admin/routes/${routeId}/details`, {
-          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+          headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
         });
         const data = await res.json();
         setDetails(data);
@@ -286,8 +291,14 @@ export default function RoutesManagement() {
   const [showEmployeeDropdown, setShowEmployeeDropdown] = useState(false);
   const [detailModal, setDetailModal] = useState<{ open: boolean; routeId: number | null }>({ open: false, routeId: null });
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null);
-  const [routeInfo, setRouteInfo] = useState<{ distance: string; duration: string } | null>(null);
+  const [routeInfo, setRouteInfo] = useState<{
+    distance: string;
+    duration: string;
+    distanceValue: number;
+    durationValue: number;
+  } | null>(null);
   const [activeAlerts, setActiveAlerts] = useState<any[]>([]);
+  const authToken = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -360,7 +371,7 @@ export default function RoutesManagement() {
   const fetchActiveAlerts = async () => {
     try {
       const res = await fetch(`${(import.meta as any).env.VITE_API_URL || 'http://localhost:5000/api'}/emergency/active`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
       });
       const data = await res.json();
       setActiveAlerts(Array.isArray(data) ? data : []);
@@ -467,8 +478,47 @@ export default function RoutesManagement() {
     }
   }, [routes, selectedRoute]);
 
+  useEffect(() => {
+    setRouteInfo(null);
+  }, [selectedRoute?.id]);
+
+  useEffect(() => {
+    if (!activeAlerts.length) return;
+
+    const latestRouteAlert = activeAlerts.find((alert) => {
+      const trip = trips.find((item) => item.id === Number(alert.trip_id));
+      return Boolean(trip?.route_id);
+    });
+
+    if (!latestRouteAlert) return;
+
+    const matchingTrip = trips.find((trip) => trip.id === Number(latestRouteAlert.trip_id));
+    const matchingRoute = routes.find((route) => route.id === matchingTrip?.route_id);
+
+    if (matchingRoute && matchingRoute.id !== selectedRoute?.id) {
+      setSelectedRoute(matchingRoute);
+    }
+  }, [activeAlerts, trips, routes, selectedRoute]);
+
+  const selectedRouteStops = selectedRoute ? (selectedRoute.waypoints?.length || 0) + 2 : 0;
+  const selectedRouteAssignments = [selectedRoute?.driver_name, selectedRoute?.vehicle_number].filter(Boolean).length;
+  const selectedRouteStatus = selectedRoute?.status
+    ? selectedRoute.status.charAt(0).toUpperCase() + selectedRoute.status.slice(1)
+    : 'Not selected';
+  const selectedRouteAlert = selectedRoute
+    ? activeAlerts.find((alert) => trips.find((trip) => trip.id === Number(alert.trip_id))?.route_id === selectedRoute.id)
+    : null;
+  const selectedEmergencyLocation = selectedRouteAlert
+    ? { lat: Number(selectedRouteAlert.latitude), lng: Number(selectedRouteAlert.longitude) }
+    : undefined;
+  const selectedAlertUpdatedAt = selectedRouteAlert?.created_at
+    ? new Date(selectedRouteAlert.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
+    : null;
+  const visibleDistance = routeInfo?.distance || (selectedRoute?.distance ? `${selectedRoute.distance} km` : '—');
+  const visibleDuration = routeInfo?.duration || (selectedRoute?.estimated_duration ? `${selectedRoute.estimated_duration} min` : '—');
+
   return (
-    <div className="min-h-screen bg-white flex">
+    <div className="min-h-screen bg-[linear-gradient(180deg,#f7fbf9_0%,#eff7f4_42%,#f9fbfb_100%)] flex">
       {/* Sidebar */}
       <aside
         className={`fixed top-0 left-0 h-full bg-gradient-to-b from-emerald-700 to-teal-700 text-white w-64 transform transition-transform duration-300 z-50 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'
@@ -513,32 +563,31 @@ export default function RoutesManagement() {
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 lg:ml-64 bg-[#f4f7f6] min-h-screen p-6 relative">
+      <main className="flex-1 lg:ml-64 min-h-screen p-6 relative">
         {/* Mobile Header */}
         <div className="flex items-center gap-3 mb-6 lg:mb-8">
            <Button variant="ghost" size="icon" onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden text-gray-600">
              {sidebarOpen ? <X /> : <Menu />}
            </Button>
-           <h1 className="text-2xl font-semibold text-gray-700">Route Management</h1>
+           <h1 className="text-2xl font-semibold text-gray-800">Map Page</h1>
         </div>
 
         <div className="max-w-[1600px] mx-auto">
             {/* Page Header Actions */}
-            <div className="mb-6 flex items-center justify-between">
-              <div>
-                <p className="text-gray-500 text-sm italic">Synchronizing tactical route intelligence...</p>
+            <div className="mb-8 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={() => {
+                    resetForm();
+                    setShowForm(true);
+                    setTimeout(() => document.getElementById('route-form')?.scrollIntoView({ behavior: 'smooth' }), 100);
+                  }}
+                  className="h-12 rounded-2xl bg-emerald-600 px-5 text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-700"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Route
+                </Button>
               </div>
-              <Button
-                onClick={() => {
-                  resetForm();
-                  setShowForm(true);
-                  setTimeout(() => document.getElementById('route-form')?.scrollIntoView({ behavior: 'smooth' }), 100);
-                }}
-                className="bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl shadow-md flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Create Route
-              </Button>
             </div>
 
             {/* Notifications */}
@@ -695,22 +744,43 @@ export default function RoutesManagement() {
             {/* DASHBOARD GRID */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 {/* LEFT: Routes & Trips */}
-                <div className="bg-white rounded-2xl shadow-sm p-5 flex flex-col min-h-[600px] border border-gray-100">
-                  <h2 className="text-lg font-semibold text-gray-700 mb-4">Tactical Feed</h2>
+                <div className="rounded-[30px] border border-white/70 bg-white/90 p-6 shadow-[0_20px_50px_-32px_rgba(15,23,42,0.5)] backdrop-blur flex flex-col min-h-[680px]">
+                  <div className="mb-5 flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Trip Details</p>
+                    </div>
+                    <div className="rounded-2xl bg-emerald-50 px-3 py-2 text-right">
+                      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-emerald-600">Available</p>
+                      <p className="text-lg font-semibold text-emerald-900">{routes.length}</p>
+                    </div>
+                  </div>
                   
                   {/* SOS ALERTS */}
                   {activeAlerts.length > 0 && (
                     <div className="mb-6 space-y-3">
                       {activeAlerts.map(alert => (
-                        <div key={alert.id} className="bg-red-50 border border-red-100 rounded-xl p-4 flex items-center justify-between animate-pulse">
+                        <div key={alert.id} className="rounded-2xl border border-red-100 bg-[linear-gradient(135deg,#fff5f5_0%,#fff1f2_100%)] p-4 flex items-center justify-between shadow-sm">
                           <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-red-600 rounded-full flex items-center justify-center text-white"><AlertCircle /></div>
+                            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-red-600 text-white shadow-lg shadow-red-200"><AlertCircle /></div>
                             <div>
-                              <p className="font-bold text-red-900 text-xs">EMERGENCY SOS</p>
-                              <p className="text-red-700 text-xs font-semibold">{alert.user_name}</p>
+                              <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-red-700">Emergency SOS</p>
+                              <p className="mt-1 text-sm font-semibold text-red-950">{alert.user_name}</p>
                             </div>
                           </div>
-                          <Button size="sm" variant="outline" className="text-red-600 border-red-200 bg-white" onClick={() => setSelectedRoute(null)}>TRACK</Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="rounded-xl border-red-200 bg-white text-red-600 hover:bg-red-50"
+                            onClick={() => {
+                              const matchingTrip = trips.find((trip) => trip.id === Number(alert.trip_id));
+                              const matchingRoute = routes.find((route) => route.id === matchingTrip?.route_id);
+                              if (matchingRoute) {
+                                setSelectedRoute(matchingRoute);
+                              }
+                            }}
+                          >
+                            Track
+                          </Button>
                         </div>
                       ))}
                     </div>
@@ -721,60 +791,170 @@ export default function RoutesManagement() {
                       <div 
                         key={route.id}
                         onClick={() => setSelectedRoute(route)}
-                        className={`p-4 rounded-xl border transition-all cursor-pointer ${selectedRoute?.id === route.id ? 'border-emerald-500 bg-emerald-50/20 shadow-sm' : 'border-gray-50 hover:border-emerald-100'}`}
+                        className={`cursor-pointer rounded-[24px] border p-5 transition-all ${selectedRoute?.id === route.id ? 'border-emerald-300 bg-emerald-50/70 shadow-[0_18px_40px_-30px_rgba(5,150,105,0.9)]' : 'border-slate-100 bg-slate-50/40 hover:border-emerald-100 hover:bg-white'}`}
                       >
-                        <div className="flex justify-between items-start mb-2">
-                          <h3 className="font-bold text-gray-900 text-sm uppercase truncate pr-4">{route.route_name}</h3>
+                        <div className="mb-4 flex justify-between items-start gap-3">
+                          <div className="min-w-0">
+                            <div className="mb-2 flex items-center gap-2">
+                              <span className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${route.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                                {route.status ? route.status.charAt(0).toUpperCase() + route.status.slice(1) : 'Pending'}
+                              </span>
+                              {(route.waypoints?.length || 0) > 0 && (
+                                <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-medium text-slate-600">
+                                  {route.waypoints?.length} stop{route.waypoints?.length === 1 ? '' : 's'}
+                                </span>
+                              )}
+                            </div>
+                            <h3 className="truncate pr-4 text-lg font-semibold tracking-tight text-slate-900">{route.route_name}</h3>
+                          </div>
                           <div className="flex gap-1">
-                            <button onClick={(e) => { e.stopPropagation(); handleEdit(route); }} className="p-1 hover:bg-gray-100 rounded text-gray-400"><Edit size={12} /></button>
-                            <button onClick={(e) => { e.stopPropagation(); handleDelete(route.id); }} className="p-1 hover:bg-red-50 rounded text-gray-400 hover:text-red-500"><Trash2 size={12} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleEdit(route); }} className="rounded-xl p-2 text-slate-400 transition hover:bg-white hover:text-emerald-600"><Edit size={14} /></button>
+                            <button onClick={(e) => { e.stopPropagation(); handleDelete(route.id); }} className="rounded-xl p-2 text-slate-400 transition hover:bg-red-50 hover:text-red-500"><Trash2 size={14} /></button>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2 text-[10px] font-bold text-gray-500 uppercase tracking-tight mb-2">
+                        <div className="hidden">
                           <MapPin size={10} className="text-emerald-500" />
                           {route.start_location.split(',')[0]} → {route.end_location.split(',')[0]}
                         </div>
-                        <div className="flex gap-4 text-[10px] font-black text-gray-400">
-                          <span>{route.distance || 0} KM</span>
-                          <span>{route.estimated_duration || 0} MIN</span>
+                        <div className="mb-4 flex items-start gap-2 text-sm text-slate-600">
+                          <MapPin size={15} className="mt-0.5 shrink-0 text-emerald-500" />
+                          <div className="min-w-0">
+                            <p className="truncate font-medium text-slate-800">{route.start_location.split(',')[0]} to {route.end_location.split(',')[0]}</p>
+                            <p className="mt-1 truncate text-xs text-slate-500">{route.start_location} - {route.end_location}</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3 text-sm">
+                          <div className="rounded-2xl bg-white/90 px-3 py-2">
+                            <p className="text-[11px] font-medium text-slate-500">Distance</p>
+                            <p className="mt-1 font-semibold text-slate-900">{route.distance || 0} km</p>
+                          </div>
+                          <div className="rounded-2xl bg-white/90 px-3 py-2">
+                            <p className="text-[11px] font-medium text-slate-500">Duration</p>
+                            <p className="mt-1 font-semibold text-slate-900">{route.estimated_duration || 0} min</p>
+                          </div>
+                          <div className="rounded-2xl bg-white/90 px-3 py-2">
+                            <p className="text-[11px] font-medium text-slate-500">Assigned</p>
+                            <p className="mt-1 font-semibold text-slate-900">{route.driver_name || route.vehicle_number ? 'Yes' : 'No'}</p>
+                          </div>
                         </div>
                       </div>
                     ))}
+                    {routes.length === 0 && (
+                      <div className="flex h-full min-h-[280px] flex-col items-center justify-center rounded-[24px] border border-dashed border-slate-200 bg-slate-50/60 px-6 text-center">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-emerald-600 shadow-sm">
+                          <RouteIcon className="h-6 w-6" />
+                        </div>
+                        <h3 className="mt-4 text-lg font-semibold text-slate-900">No routes available yet</h3>
+                        <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">Create a new route to start assigning drivers, vehicles, and multi-stop journeys from this panel.</p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
                 {/* RIGHT: Live Map */}
-                <div className="bg-white rounded-2xl shadow-sm p-5 flex flex-col min-h-[600px] border border-gray-100">
-                  <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-semibold text-gray-700">Live Tracking</h2>
-                    <span className="bg-emerald-100 text-emerald-600 text-[10px] px-2 py-0.5 font-black rounded-full uppercase italic">Uplink Active</span>
+                <div className="rounded-[30px] border border-white/70 bg-white/90 p-6 shadow-[0_20px_50px_-32px_rgba(15,23,42,0.5)] backdrop-blur flex flex-col min-h-[680px]">
+                  <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Live Tracking</p>
+                    </div>
+                    <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">Tracking active</span>
                   </div>
-                  <div className="flex-1 rounded-xl overflow-hidden bg-gray-50 border border-gray-100 relative min-h-[400px]">
+                  <div className="flex-1 rounded-[28px] overflow-hidden bg-slate-50 border border-slate-100 relative min-h-[420px] shadow-inner">
                     {selectedRoute ? (
                       <AdminRouteMapUI 
                         stops={[
-                          { name: 'Origin', address: selectedRoute.start_location },
+                          {
+                            name: 'Origin',
+                            address: selectedRoute.start_location,
+                            lat: selectedRoute.start_lat ?? undefined,
+                            lng: selectedRoute.start_lng ?? undefined,
+                          },
                           ...(selectedRoute.waypoints || [])
                             .filter((w: string) => w.trim() !== '')
                             .map((w: string, i: number) => ({ name: `Stop ${i+1}`, address: w })),
-                          { name: 'Destination', address: selectedRoute.end_location }
+                          {
+                            name: 'Destination',
+                            address: selectedRoute.end_location,
+                            lat: selectedRoute.end_lat ?? undefined,
+                            lng: selectedRoute.end_lng ?? undefined,
+                          }
                         ]}
-                        emergencyLocation={activeAlerts.length > 0 ? { lat: Number(activeAlerts[0].latitude), lng: Number(activeAlerts[0].longitude) } : undefined}
+                        emergencyLocation={selectedEmergencyLocation}
+                        onRouteInfo={setRouteInfo}
                       />
                     ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-center p-8 opacity-40">
-                         <div className="w-16 h-16 bg-gray-200 rounded-2xl flex items-center justify-center mb-4"><MapIcon className="text-white" /></div>
-                         <p className="text-gray-400 font-bold text-xs uppercase tracking-widest">Select objective to initiate tracking</p>
+                      <div className="w-full h-full flex flex-col items-center justify-center text-center p-8">
+                         <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-3xl bg-white text-emerald-600 shadow-sm"><MapIcon className="h-7 w-7" /></div>
+                         <p className="text-lg font-semibold text-slate-900">Select a route to preview it on the map</p>
+                         <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">The selected route will show start and end markers, intermediate stops, and any active SOS location.</p>
                       </div>
                     )}
                   </div>
 
                   {selectedRoute && (
-                    <div className="mt-4 pt-4 border-t flex justify-between items-center">
-                      <div className="text-gray-900 font-bold text-xs">
-                        {selectedRoute.route_name}
+                    <div className="mt-5 space-y-4">
+                      <div className="rounded-[26px] border border-slate-100 bg-white p-5 shadow-sm">
+                        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
+                                {selectedRouteStatus}
+                              </span>
+                              {selectedRouteAlert && (
+                                <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">
+                                  SOS Active
+                                </span>
+                              )}
+                            </div>
+                            <p className="mt-3 text-lg font-semibold text-slate-900">{selectedRoute.route_name}</p>
+                            <p className="mt-2 text-sm text-slate-600">
+                              {selectedRoute.start_location.split(',')[0]} to {selectedRoute.end_location.split(',')[0]}
+                            </p>
+                            <p className="mt-1 text-sm text-slate-500">
+                              {selectedRoute.driver_name || 'Driver not assigned'} {selectedRoute.vehicle_number ? `- ${selectedRoute.vehicle_number}` : ''}
+                            </p>
+                          </div>
+                          <div className="grid min-w-[220px] grid-cols-2 gap-3">
+                            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                              <p className="text-xs font-medium text-slate-500">Distance</p>
+                              <p className="mt-1 text-2xl font-semibold text-slate-900">{visibleDistance}</p>
+                            </div>
+                            <div className="rounded-2xl bg-slate-50 px-4 py-3">
+                              <p className="text-xs font-medium text-slate-500">Duration</p>
+                              <p className="mt-1 text-2xl font-semibold text-slate-900">{visibleDuration}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {selectedRouteAlert && selectedEmergencyLocation && (
+                          <div className="mt-4 rounded-[22px] border border-red-100 bg-[linear-gradient(135deg,#fff7f7_0%,#fff3f4_100%)] p-4">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-red-600">Emergency location</p>
+                                <p className="mt-1 text-sm font-semibold text-red-900">
+                                  {selectedRouteAlert.userName || selectedRouteAlert.user_name || 'Employee alert'}
+                                </p>
+                                <p className="mt-1 text-sm text-red-700">
+                                  {selectedEmergencyLocation.lat.toFixed(6)}, {selectedEmergencyLocation.lng.toFixed(6)}
+                                </p>
+                              </div>
+                              <div className="text-sm text-red-700">
+                                Last updated {selectedAlertUpdatedAt || 'just now'}
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
-                      <Button onClick={() => setDetailModal({ open: true, routeId: selectedRoute.id })} size="sm" variant="outline" className="text-[10px] font-black rounded-lg">VERIFY CODES</Button>
+
+                      <div className="flex flex-col gap-3 rounded-[24px] border border-slate-100 bg-white p-4 md:flex-row md:items-center md:justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{selectedRouteStops} stops</p>
+                          <p className="mt-1 text-sm text-slate-500">{selectedRouteAssignments} assignment{selectedRouteAssignments === 1 ? '' : 's'}</p>
+                        </div>
+                        <Button onClick={() => setDetailModal({ open: true, routeId: selectedRoute.id })} size="sm" variant="outline" className="rounded-xl border-emerald-200 px-4 text-sm font-medium text-emerald-700 hover:bg-emerald-50">
+                          Verify Codes
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>

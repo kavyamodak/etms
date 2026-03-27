@@ -8,6 +8,18 @@ dotenv.config();
 
 const router = express.Router();
 
+const MUMBAI_LOCATION_SUFFIX = 'Mumbai, Maharashtra, India';
+
+const normalizeMumbaiLocation = (value) => {
+  const raw = String(value || '').trim();
+  if (!raw) return raw;
+  const lower = raw.toLowerCase();
+  if (lower.includes('mumbai') || lower.includes('maharashtra') || lower.includes('india')) {
+    return raw;
+  }
+  return `${raw}, ${MUMBAI_LOCATION_SUFFIX}`;
+};
+
 // Middleware to verify JWT token
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -2093,25 +2105,46 @@ router.post('/routes', verifyToken, async (req, res) => {
   }
 
   try {
+    const normalizedStartLocation = normalizeMumbaiLocation(start_location);
+    const normalizedEndLocation = normalizeMumbaiLocation(end_location);
+    const normalizedWaypoints = Array.isArray(waypoints)
+      ? waypoints.map((point) => normalizeMumbaiLocation(point)).filter(Boolean)
+      : [];
+
     // Optionally geocode start/end via Google Maps
     let start_lat = null, start_lng = null, end_lat = null, end_lng = null;
+    let resolvedStartLocation = normalizedStartLocation;
+    let resolvedEndLocation = normalizedEndLocation;
+    let resolvedDistance = distance ? Number(distance) : null;
+    let resolvedEstimatedDuration = estimated_duration ? Number(estimated_duration) : null;
     const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
 
     if (GOOGLE_MAPS_API_KEY) {
       try {
-        const geocode = async (address) => {
-          const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`;
-          const r = await fetch(url);
-          const d = await r.json();
-          if (d.status === 'OK' && d.results[0]) {
-            const { lat, lng } = d.results[0].geometry.location;
-            return { lat, lng };
+        const { geocodeAddress, getDirections } = await import('../services/googleMaps.js');
+        const [startGeo, endGeo] = await Promise.all([
+          geocodeAddress(normalizedStartLocation),
+          geocodeAddress(normalizedEndLocation)
+        ]);
+        if (startGeo) {
+          start_lat = startGeo.lat;
+          start_lng = startGeo.lng;
+          resolvedStartLocation = startGeo.formatted_address || normalizedStartLocation;
+        }
+        if (endGeo) {
+          end_lat = endGeo.lat;
+          end_lng = endGeo.lng;
+          resolvedEndLocation = endGeo.formatted_address || normalizedEndLocation;
+        }
+        if (!resolvedDistance || !resolvedEstimatedDuration) {
+          const routeMetrics = await getDirections(normalizedStartLocation, normalizedEndLocation, normalizedWaypoints);
+          if (!resolvedDistance) {
+            resolvedDistance = Number((routeMetrics.distanceMeters / 1000).toFixed(1));
           }
-          return null;
-        };
-        const [startGeo, endGeo] = await Promise.all([geocode(start_location), geocode(end_location)]);
-        if (startGeo) { start_lat = startGeo.lat; start_lng = startGeo.lng; }
-        if (endGeo) { end_lat = endGeo.lat; end_lng = endGeo.lng; }
+          if (!resolvedEstimatedDuration) {
+            resolvedEstimatedDuration = Math.ceil(routeMetrics.durationSeconds / 60);
+          }
+        }
       } catch (geoErr) {
         console.warn('Geocoding failed (non-fatal):', geoErr.message);
       }
@@ -2134,10 +2167,10 @@ router.post('/routes', verifyToken, async (req, res) => {
       VALUES ($1,$2,$3,$4,$5,$6,$7,'planned',$8,$9,$10,$11,$12,$13)
       RETURNING *
     `, [
-      route_name, start_location, end_location,
-      distance || null, estimated_duration || null,
+      route_name, resolvedStartLocation, resolvedEndLocation,
+      resolvedDistance, resolvedEstimatedDuration,
       assigned_driver_id || null, vehicle_id || null,
-      JSON.stringify(waypoints || []),
+      JSON.stringify(normalizedWaypoints),
       resolvedMaxPassengers,
       start_lat, start_lng, end_lat, end_lng,
     ]);
@@ -2170,8 +2203,8 @@ router.post('/routes', verifyToken, async (req, res) => {
           newRoute.id,
           assigned_driver_id || null,
           vehicle_id || null,
-          start_location,
-          end_location,
+          resolvedStartLocation,
+          resolvedEndLocation,
           scheduled_time,
           otp,
           sequence
@@ -2185,7 +2218,7 @@ router.post('/routes', verifyToken, async (req, res) => {
           );
           if (empRes.rows.length > 0) {
             const email = empRes.rows[0].email;
-            sendTripOTPEmail(email, otp, start_location, end_location, scheduled_time)
+            sendTripOTPEmail(email, otp, resolvedStartLocation, resolvedEndLocation, scheduled_time)
               .then(() => console.log(`✅ [Admin Route] Trip OTP email sent to ${email} (OTP: ${otp})`))
               .catch(err => console.error(`❌ [Admin Route] Failed to send email to ${email}:`, err));
           }
@@ -2208,6 +2241,44 @@ router.put('/routes/:id', verifyToken, async (req, res) => {
   const { route_name, start_location, end_location, distance, estimated_duration, assigned_driver_id, vehicle_id, status } = req.body;
 
   try {
+    const resolvedStartLocation = start_location ? normalizeMumbaiLocation(start_location) : null;
+    const resolvedEndLocation = end_location ? normalizeMumbaiLocation(end_location) : null;
+    let resolvedDistance = distance ? Number(distance) : null;
+    let resolvedEstimatedDuration = estimated_duration ? Number(estimated_duration) : null;
+    let start_lat = null;
+    let start_lng = null;
+    let end_lat = null;
+    let end_lng = null;
+
+    if (resolvedStartLocation && resolvedEndLocation && process.env.GOOGLE_MAPS_API_KEY) {
+      try {
+        const { geocodeAddress, getDirections } = await import('../services/googleMaps.js');
+        const [startGeo, endGeo] = await Promise.all([
+          geocodeAddress(resolvedStartLocation),
+          geocodeAddress(resolvedEndLocation)
+        ]);
+        if (startGeo) {
+          start_lat = startGeo.lat;
+          start_lng = startGeo.lng;
+        }
+        if (endGeo) {
+          end_lat = endGeo.lat;
+          end_lng = endGeo.lng;
+        }
+        if (!resolvedDistance || !resolvedEstimatedDuration) {
+          const routeMetrics = await getDirections(resolvedStartLocation, resolvedEndLocation, []);
+          if (!resolvedDistance) {
+            resolvedDistance = Number((routeMetrics.distanceMeters / 1000).toFixed(1));
+          }
+          if (!resolvedEstimatedDuration) {
+            resolvedEstimatedDuration = Math.ceil(routeMetrics.durationSeconds / 60);
+          }
+        }
+      } catch (geoErr) {
+        console.warn('Route update geocoding failed (non-fatal):', geoErr.message);
+      }
+    }
+
     const result = await pool.query(`
       UPDATE routes
       SET route_name = COALESCE($2, route_name),
@@ -2218,10 +2289,14 @@ router.put('/routes/:id', verifyToken, async (req, res) => {
           assigned_driver_id = COALESCE($7, assigned_driver_id),
           vehicle_id = COALESCE($8, vehicle_id),
           status = COALESCE($9, status),
+          start_lat = COALESCE($10, start_lat),
+          start_lng = COALESCE($11, start_lng),
+          end_lat = COALESCE($12, end_lat),
+          end_lng = COALESCE($13, end_lng),
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $1
       RETURNING *
-    `, [req.params.id, route_name, start_location, end_location, distance, estimated_duration, assigned_driver_id, vehicle_id, status]);
+    `, [req.params.id, route_name, resolvedStartLocation, resolvedEndLocation, resolvedDistance, resolvedEstimatedDuration, assigned_driver_id, vehicle_id, status, start_lat, start_lng, end_lat, end_lng]);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Route not found' });
