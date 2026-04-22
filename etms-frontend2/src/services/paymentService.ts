@@ -1,5 +1,6 @@
 // Stripe Payment Service for ETMS
 import { STRIPE_CONFIG } from '../config/stripeConfig';
+import { getApiBaseUrl } from './api';
 
 // Note: Stripe SDK will be installed via npm
 // For now, we'll use the API approach for frontend
@@ -37,13 +38,6 @@ export interface PayoutHistoryResponse {
   payouts: Payout[];
   error?: string;
 }
-
-// Get API base URL
-const getApiBaseUrl = () => {
-  return ((globalThis as any)?.import?.meta?.env?.VITE_API_URL as string | undefined) ||
-         ((import.meta as any)?.env?.VITE_API_URL as string | undefined) ||
-         'http://localhost:5000/api';
-};
 
 // Helper function to get JWT token
 const getToken = () => {

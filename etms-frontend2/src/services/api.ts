@@ -1,8 +1,19 @@
-// API base URL - change based on environment
-const API_BASE_URL =
-  ((globalThis as any)?.import?.meta?.env?.VITE_API_URL as string | undefined) ||
-  ((import.meta as any)?.env?.VITE_API_URL as string | undefined) ||
-  'http://localhost:5000/api';
+const normalizeApiUrl = (url?: string) => url?.replace(/\/$/, '');
+
+export const getApiBaseUrl = () => {
+  const env = (import.meta as any)?.env || {};
+  const configuredUrl = normalizeApiUrl(env.VITE_API_URL as string | undefined);
+
+  if (configuredUrl) return configuredUrl;
+
+  if (env.DEV) return 'http://localhost:5000/api';
+
+  console.error('Missing VITE_API_URL. Set it in Vercel to your Render backend URL, for example https://your-render-service.onrender.com/api');
+  return '/api';
+};
+
+// API base URL. In production this must come from Vercel's VITE_API_URL env var.
+export const API_BASE_URL = getApiBaseUrl();
 
 // Helper function to get JWT token from localStorage or sessionStorage
 function getToken() {
@@ -259,7 +270,10 @@ export const employeeAPI: EmployeeAPI = {
       body: JSON.stringify(data),
     });
 
-    if (!response.ok) throw new Error('Failed to save employee onboarding');
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || err.detail || `Failed to save employee onboarding (HTTP ${response.status})`);
+    }
     return response.json();
   },
 };
@@ -565,7 +579,10 @@ export const tripAPI = {
       body: JSON.stringify(data),
     });
 
-    if (!response.ok) throw new Error('Failed to request trip');
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to request trip (HTTP ${response.status})`);
+    }
     return response.json();
   },
 

@@ -196,6 +196,7 @@ export default function TranzoSignupPage() {
   };
 
   const handleGoogleSignup = () => {
+    sessionStorage.setItem('oauthInProgress', '1');
     authAPI.googleLogin(role, 'signup');
   };
 
@@ -207,8 +208,8 @@ export default function TranzoSignupPage() {
             <div className="inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 rounded-2xl mb-6">
               <Mail className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-gray-800 mb-2">Verify Your Email</h2>
-            <p className="text-gray-500 text-sm">We've sent a 6-digit code to <br /><span className="font-semibold text-gray-700">{registeredEmail}</span></p>
+            <h2 className="text-gray-800 mb-2">Verify Your Account</h2>
+            <p className="text-gray-500 text-sm">Enter the 6-digit OTP from the backend terminal logs for <br /><span className="font-semibold text-gray-700">{registeredEmail}</span></p>
           </div>
 
           {/* No inline error — toasts handle errors */}
@@ -231,7 +232,7 @@ export default function TranzoSignupPage() {
               className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-xl h-12 shadow-lg"
               disabled={isLoading || otp.length !== 6}
             >
-              {isLoading ? '⏳ Verifying...' : 'VERIFY EMAIL'}
+              {isLoading ? 'Verifying...' : 'VERIFY OTP'}
             </Button>
           </form>
 

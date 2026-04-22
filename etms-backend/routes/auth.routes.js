@@ -191,10 +191,15 @@ router.post("/signup", async (req, res) => {
           "UPDATE users SET otp=$1, otp_expires_at=$2, password_hash=$3 WHERE id=$4",
           [otp, otpExpiresAt, hashed, user.id]
         );
-        sendOTPEmail(email.toLowerCase(), otp);
+        const emailSent = await sendOTPEmail(email.toLowerCase(), otp);
+        if (!emailSent) {
+          return res.status(503).json({
+            error: "Unable to generate verification OTP right now. Please try again shortly.",
+          });
+        }
 
         return res.status(201).json({
-          message: "OTP resent to email.",
+          message: "OTP generated. Check backend terminal logs.",
           requiresOTP: true,
           email: email.toLowerCase(),
         });
@@ -234,11 +239,17 @@ router.post("/signup", async (req, res) => {
     }
 
     // 6️⃣ Send out the OTP email (async)
-    sendOTPEmail(newUser.email, otp);
+    const emailSent = await sendOTPEmail(newUser.email, otp);
+    if (!emailSent) {
+      await pool.query("DELETE FROM users WHERE id = $1", [newUser.id]);
+      return res.status(503).json({
+        error: "Unable to generate verification OTP right now. Please try again.",
+      });
+    }
 
     // Note: Do NOT generate/return JWT yet. Force the verification step.
     return res.status(201).json({
-      message: "User created successfully. OTP sent to email.",
+      message: "User created successfully. OTP generated in backend terminal logs.",
       requiresOTP: true,
       email: newUser.email,
     });
@@ -287,7 +298,12 @@ router.post("/login", async (req, res) => {
       const otp = Math.floor(100000 + Math.random() * 900000).toString();
       const otpExpiresAt = new Date(Date.now() + 10 * 60000);
       await pool.query("UPDATE users SET otp=$1, otp_expires_at=$2 WHERE id=$3", [otp, otpExpiresAt, user.id]);
-      sendOTPEmail(user.email, otp);
+      const emailSent = await sendOTPEmail(user.email, otp);
+      if (!emailSent) {
+        return res.status(503).json({
+          error: "Unable to generate verification OTP right now. Please try again shortly.",
+        });
+      }
 
       return res.status(403).json({
         error: "Email not verified",
@@ -399,8 +415,13 @@ router.post("/forgot-password", async (req, res) => {
       { expiresIn: "15m" }
     );
 
-    // Send email (or log to console if SMTP not configured)
-    await sendResetEmail(user.email, token);
+    // Generate the reset link in backend terminal logs.
+    const resetEmailSent = await sendResetEmail(user.email, token);
+    if (!resetEmailSent) {
+      return res.status(503).json({
+        error: "Unable to generate reset link right now. Please try again shortly."
+      });
+    }
 
     return res.json({ message: "If this email is registered, a reset link will be sent." });
   } catch (err) {

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { AlertTriangle, Phone, X, MapPin, Clock, User } from 'lucide-react';
 import { Button } from './ui/button';
 import { useAuth } from '../context/AuthContext';
-import { tripAPI } from '../services/api';
+import { emergencyAPI, tripAPI } from '../services/api';
 import { useNotify } from '../context/NotificationContext';
 
 interface Location {
@@ -144,12 +144,8 @@ export default function SOSButton() {
 
       let apiSuccess = false;
       try {
-        const res = await fetch('/api/emergency/trigger', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Emergency-Priority': 'CRITICAL' },
-          body: JSON.stringify(emergencyData),
-        });
-        if (res.ok) apiSuccess = true;
+        await emergencyAPI.trigger(emergencyData);
+        apiSuccess = true;
       } catch {
         // fallback: store locally
         const emergencyLogs = JSON.parse(localStorage.getItem('emergencyLogs') || '[]');

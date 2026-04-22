@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { routesAPI, driverAPI, vehicleAPI, tripAPI, employeeAPI } from '../services/api';
+import { API_BASE_URL, routesAPI, driverAPI, vehicleAPI, tripAPI, employeeAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import {
   MapPin, Clock, Users, Car, User, Calendar, Plus, Edit, Trash2,
@@ -168,7 +168,7 @@ function RouteDetailModal({ routeId, onClose }: { routeId: number; onClose: () =
   useEffect(() => {
     const fetchDetails = async () => {
       try {
-        const res = await fetch(`${(import.meta as any).env.VITE_API_URL || 'http://localhost:5000/api'}/admin/routes/${routeId}/details`, {
+        const res = await fetch(`${API_BASE_URL}/admin/routes/${routeId}/details`, {
           headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
         });
         const data = await res.json();
@@ -370,7 +370,7 @@ export default function RoutesManagement() {
 
   const fetchActiveAlerts = async () => {
     try {
-      const res = await fetch(`${(import.meta as any).env.VITE_API_URL || 'http://localhost:5000/api'}/emergency/active`, {
+      const res = await fetch(`${API_BASE_URL}/emergency/active`, {
         headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {}
       });
       const data = await res.json();
