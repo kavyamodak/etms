@@ -1,16 +1,28 @@
 const normalizeApiUrl = (url?: string) => url?.replace(/\/$/, '');
+const isLocalApiUrl = (url?: string) => /https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(url || '');
+const PRODUCTION_API_FALLBACK = 'https://etms-backend-il55.onrender.com/api';
 
 export const getApiBaseUrl = () => {
   const env = (import.meta as any)?.env || {};
   const configuredUrl = normalizeApiUrl(env.VITE_API_URL as string | undefined);
 
-  if (configuredUrl) return configuredUrl;
+  if (configuredUrl) {
+    if (!env.DEV && isLocalApiUrl(configuredUrl)) {
+      console.warn(
+        `Ignoring local API URL "${configuredUrl}" in production. Falling back to ${PRODUCTION_API_FALLBACK}.`
+      );
+      return PRODUCTION_API_FALLBACK;
+    }
+
+    return configuredUrl;
+  }
 
   if (env.DEV) return 'http://localhost:5000/api';
 
-  throw new Error(
-    'Missing VITE_API_URL. Set it in Vercel to your Render backend URL, for example https://your-render-service.onrender.com/api'
+  console.warn(
+    `Missing VITE_API_URL in production. Falling back to ${PRODUCTION_API_FALLBACK}. Set VITE_API_URL in Vercel to remove this fallback.`
   );
+  return PRODUCTION_API_FALLBACK;
 };
 
 // API base URL. In production this must come from Vercel's VITE_API_URL env var.
