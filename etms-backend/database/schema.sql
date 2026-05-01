@@ -166,6 +166,31 @@ CREATE INDEX idx_feedback_user_id ON feedback(user_id);
 CREATE INDEX idx_routes_status ON routes(status);
 
 -- =====================================================
+-- Compatibility Columns Required By Current Backend
+-- =====================================================
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS otp VARCHAR(10),
+    ADD COLUMN IF NOT EXISTS otp_expires_at TIMESTAMP;
+
+ALTER TABLE routes
+    ADD COLUMN IF NOT EXISTS polyline TEXT,
+    ADD COLUMN IF NOT EXISTS waypoints JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS max_passengers INTEGER,
+    ADD COLUMN IF NOT EXISTS start_lat DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS start_lng DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS end_lat DOUBLE PRECISION,
+    ADD COLUMN IF NOT EXISTS end_lng DOUBLE PRECISION;
+
+ALTER TABLE trips
+    ADD COLUMN IF NOT EXISTS expected_completion_time TIMESTAMP,
+    ADD COLUMN IF NOT EXISTS total_distance DECIMAL(10,2),
+    ADD COLUMN IF NOT EXISTS total_duration INTEGER,
+    ADD COLUMN IF NOT EXISTS match_method VARCHAR(50),
+    ADD COLUMN IF NOT EXISTS otp VARCHAR(10),
+    ADD COLUMN IF NOT EXISTS sequence_number INTEGER DEFAULT 1;
+
+-- =====================================================
 -- SAMPLE DATA (Optional - for testing)
 -- =====================================================
 
@@ -186,10 +211,11 @@ ON CONFLICT DO NOTHING;
 
 -- Add employee details
 INSERT INTO employees (user_id, employee_id, department, designation, location)
-SELECT id, 'EMP001', 'Engineering', 'Software Engineer', 'Bangalore'
+SELECT id, 'EMP000', 'Engineering', 'Software Engineer', 'Bangalore'
 FROM users WHERE email = 'john@company.com' AND NOT EXISTS (
     SELECT 1 FROM employees WHERE user_id = users.id
-);
+)
+ON CONFLICT (employee_id) DO NOTHING;
 
 -- Add driver details
 INSERT INTO drivers (user_id, license_number, status, is_active)
@@ -242,34 +268,39 @@ ON CONFLICT (email) DO NOTHING;
 
 -- Helper: Insert employee/driver/vehicle links if missing
 INSERT INTO employees (user_id, employee_id, department, designation, location)
-SELECT u.id, 'EMP001', 'IT', 'Software Engineer', 'Andheri East, Mumbai'
+SELECT u.id, 'EMP101', 'IT', 'Software Engineer', 'Andheri East, Mumbai'
 FROM users u WHERE u.email = 'aarav.sharma@company.in' AND NOT EXISTS (
   SELECT 1 FROM employees e WHERE e.user_id = u.id
-);
+)
+ON CONFLICT (employee_id) DO NOTHING;
 
 INSERT INTO employees (user_id, employee_id, department, designation, location)
-SELECT u.id, 'EMP002', 'HR', 'HR Executive', 'Powai, Mumbai'
+SELECT u.id, 'EMP102', 'HR', 'HR Executive', 'Powai, Mumbai'
 FROM users u WHERE u.email = 'rohan.patil@company.in' AND NOT EXISTS (
   SELECT 1 FROM employees e WHERE e.user_id = u.id
-);
+)
+ON CONFLICT (employee_id) DO NOTHING;
 
 INSERT INTO employees (user_id, employee_id, department, designation, location)
-SELECT u.id, 'EMP003', 'Finance', 'Accountant', 'Hinjewadi, Pune'
+SELECT u.id, 'EMP103', 'Finance', 'Accountant', 'Hinjewadi, Pune'
 FROM users u WHERE u.email = 'neha.kulkarni@company.in' AND NOT EXISTS (
   SELECT 1 FROM employees e WHERE e.user_id = u.id
-);
+)
+ON CONFLICT (employee_id) DO NOTHING;
 
 INSERT INTO employees (user_id, employee_id, department, designation, location)
-SELECT u.id, 'EMP004', 'Marketing', 'Marketing Manager', 'Whitefield, Bangalore'
+SELECT u.id, 'EMP104', 'Marketing', 'Marketing Manager', 'Whitefield, Bangalore'
 FROM users u WHERE u.email = 'pooja.verma@company.in' AND NOT EXISTS (
   SELECT 1 FROM employees e WHERE e.user_id = u.id
-);
+)
+ON CONFLICT (employee_id) DO NOTHING;
 
 INSERT INTO employees (user_id, employee_id, department, designation, location)
-SELECT u.id, 'EMP005', 'Operations', 'Operations Lead', 'Gachibowli, Hyderabad'
+SELECT u.id, 'EMP105', 'Operations', 'Operations Lead', 'Gachibowli, Hyderabad'
 FROM users u WHERE u.email = 'amit.joshi@company.in' AND NOT EXISTS (
   SELECT 1 FROM employees e WHERE e.user_id = u.id
-);
+)
+ON CONFLICT (employee_id) DO NOTHING;
 
 INSERT INTO drivers (user_id, license_number, status, is_active)
 SELECT u.id, 'DL-MH-001', 'active', true
