@@ -195,19 +195,25 @@ ALTER TABLE trips
 -- =====================================================
 
 -- Admin User
-INSERT INTO users (full_name, email, phone, password_hash, role) 
-VALUES ('Admin User', 'admin@etms.com', '9876543210', '$2a$10$xxxx', 'admin')
-ON CONFLICT DO NOTHING;
+INSERT INTO users (full_name, email, phone, password_hash, role, is_verified) 
+VALUES ('Admin User', 'admin@etms.com', '9876543210', '$2b$10$BOeDd8LdjTbmXUQ4WuDvmO7u/M3HVI9.9CaV/.PBmJ2G2CgmReTlu', 'admin', true)
+ON CONFLICT (email) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    is_verified = true;
 
 -- Employee User
-INSERT INTO users (full_name, email, phone, password_hash, role) 
-VALUES ('John Doe', 'john@company.com', '9123456789', '$2a$10$xxxx', 'employee')
-ON CONFLICT DO NOTHING;
+INSERT INTO users (full_name, email, phone, password_hash, role, is_verified) 
+VALUES ('John Doe', 'john@company.com', '9123456789', '$2b$10$BOeDd8LdjTbmXUQ4WuDvmO7u/M3HVI9.9CaV/.PBmJ2G2CgmReTlu', 'employee', true)
+ON CONFLICT (email) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    is_verified = true;
 
 -- Driver User
-INSERT INTO users (full_name, email, phone, password_hash, role) 
-VALUES ('Rajesh Kumar', 'rajesh@etms.com', '9876543210', '$2a$10$xxxx', 'driver')
-ON CONFLICT DO NOTHING;
+INSERT INTO users (full_name, email, phone, password_hash, role, is_verified) 
+VALUES ('Rajesh Kumar', 'rajesh@etms.com', '9876543210', '$2b$10$BOeDd8LdjTbmXUQ4WuDvmO7u/M3HVI9.9CaV/.PBmJ2G2CgmReTlu', 'driver', true)
+ON CONFLICT (email) DO UPDATE SET
+    password_hash = EXCLUDED.password_hash,
+    is_verified = true;
 
 -- Add employee details
 INSERT INTO employees (user_id, employee_id, department, designation, location)

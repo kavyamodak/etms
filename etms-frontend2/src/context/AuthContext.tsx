@@ -259,6 +259,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('persistAuth');
     sessionStorage.removeItem('authToken');
     sessionStorage.removeItem('authUser');
+    sessionStorage.removeItem('needsOnboarding');
+    sessionStorage.removeItem('onboardingRole');
+    sessionStorage.removeItem('userEmail');
+    sessionStorage.removeItem('userFullName');
+    sessionStorage.removeItem('userPhone');
+    sessionStorage.removeItem('registeredEmail');
+    sessionStorage.removeItem('requiresOTP');
+    sessionStorage.removeItem('oauthInProgress');
     setToken(null);
     setUser(null);
     // Hard redirect so ProtectedRoute re-evaluation is immediate, regardless of React render timing

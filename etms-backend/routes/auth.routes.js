@@ -12,6 +12,7 @@ dotenv.config();
 const router = express.Router();
 const validRoles = ["admin", "employee", "driver"];
 const frontendUrl = getFrontendUrl();
+const demoPassword = process.env.DEMO_LOGIN_PASSWORD || "Demo@123";
 
 const normalizeRole = (role) => {
   if (!role) return "employee";
@@ -19,6 +20,8 @@ const normalizeRole = (role) => {
   if (lower === "user") return "employee";
   return validRoles.includes(lower) ? lower : "employee";
 };
+
+const isSeedPlaceholderHash = (passwordHash) => passwordHash === "$2a$10$xxxx";
 
 /* =======================
    GOOGLE LOGIN
@@ -235,7 +238,7 @@ router.post("/signup", async (req, res) => {
     const newUser = userResult.rows[0];
 
     // 5️⃣ Create role-specific records
-    if (normalizedRole === 'user') {
+    if (normalizedRole === 'employee') {
       await pool.query(
         `INSERT INTO employees (user_id, employee_id)
          VALUES ($1, $2)`,
@@ -297,7 +300,12 @@ router.post("/login", async (req, res) => {
     }
 
     const user = result.rows[0];
-    const match = await bcrypt.compare(password, user.password_hash);
+    let match = await bcrypt.compare(password, user.password_hash);
+
+    // Temporary compatibility for seeded demo users created with placeholder hashes.
+    if (!match && isSeedPlaceholderHash(user.password_hash) && password === demoPassword) {
+      match = true;
+    }
 
     if (!match) {
       return res.status(401).json({ error: "Invalid credentials" });

@@ -5,7 +5,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
 import { useAuth } from '../context/AuthContext';
-import { authAPI } from '../services/api';
+import { API_BASE_URL, authAPI } from '../services/api';
 import { useNotify } from '../context/NotificationContext';
 
 export default function TranzoLoginPage() {
@@ -44,23 +44,11 @@ export default function TranzoLoginPage() {
 
     const loadingId = notify.loading('Checking your account...');
     try {
-      // Step 1: Validate email exists in database
-      const { exists } = await authAPI.checkEmail(email);
-      if (!exists) {
-        notify.updateNotification(loadingId, {
-          message: 'No account found with this email address. Please check your email or sign up.',
-          type: 'error',
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      // Step 2: Attempt login with password
+      // Attempt login directly so the backend can return the real auth result.
       notify.updateNotification(loadingId, { message: 'Verifying your password...', type: 'loading' });
       const loggedInUser = await login(email, password, rememberMe);
       const destination = getDestination(loggedInUser.role);
 
-      // Step 3: Success — show premium toast then navigate
       notify.updateNotification(loadingId, {
         message: 'Welcome back! Redirecting to your dashboard...',
         type: 'success',
@@ -69,9 +57,12 @@ export default function TranzoLoginPage() {
 
       navigate(destination, { replace: true });
     } catch (err: any) {
-      const msg = err.message?.includes('fetch')
-        ? 'Cannot connect to server. Please ensure the backend is running.'
-        : err.message || 'Invalid password. Please try again.';
+      const msg =
+        err.message?.includes('Failed to reach API at')
+          ? err.message
+          : err.message?.includes('fetch')
+            ? `Cannot connect to server. Current API URL: ${API_BASE_URL}`
+            : err.message || 'Invalid password. Please try again.';
       notify.updateNotification(loadingId, { message: msg, type: 'error' });
     } finally {
       setIsLoading(false);
