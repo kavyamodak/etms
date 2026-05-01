@@ -1,5 +1,4 @@
-const getFrontendUrl = () =>
-    (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+import { getFrontendUrl } from "../config/runtimeUrls.js";
 
 const logBox = (lines) => {
     console.log("-----------------------------------------");
@@ -8,7 +7,13 @@ const logBox = (lines) => {
 };
 
 export const sendResetEmail = async (email, token) => {
-    const resetLink = `${getFrontendUrl()}/reset-password?token=${token}`;
+    const frontendUrl = getFrontendUrl();
+    if (!frontendUrl) {
+        console.error("Cannot generate password reset link because FRONTEND_URL is not configured");
+        return false;
+    }
+
+    const resetLink = `${frontendUrl}/reset-password?token=${token}`;
 
     logBox([
         "PASSWORD RESET LINK GENERATED",

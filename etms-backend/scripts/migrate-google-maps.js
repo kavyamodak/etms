@@ -37,8 +37,13 @@ async function migrate() {
         console.error("❌ Migration failed:", err.message);
     } finally {
         client.release();
-        process.exit();
     }
 }
 
-migrate();
+export default migrate;
+
+if (process.argv[1] && import.meta.url === `file:///${process.argv[1].replace(/\\/g, "/")}`) {
+    migrate()
+        .then(() => process.exit(0))
+        .catch(() => process.exit(1));
+}

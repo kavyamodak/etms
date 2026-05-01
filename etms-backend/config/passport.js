@@ -1,6 +1,7 @@
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import pool from "./db.js";
+import { getGoogleCallbackUrl } from "./runtimeUrls.js";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -12,12 +13,26 @@ const normalizeRole = (role) => {
   return validRoles.includes(role) ? role : "employee";
 };
 
+const hasCompletedRoleSetup = async (userId, role) => {
+  if (role === "driver") {
+    const result = await pool.query("SELECT 1 FROM drivers WHERE user_id = $1 LIMIT 1", [userId]);
+    return result.rows.length > 0;
+  }
+
+  if (role === "employee") {
+    const result = await pool.query("SELECT 1 FROM employees WHERE user_id = $1 LIMIT 1", [userId]);
+    return result.rows.length > 0;
+  }
+
+  return true;
+};
+
 passport.use(
   new GoogleStrategy(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: process.env.GOOGLE_CALLBACK_URL || "http://localhost:5000/api/auth/google/callback",
+      callbackURL: getGoogleCallbackUrl(),
       passReqToCallback: true,
     },
     async (req, accessToken, refreshToken, profile, done) => {
@@ -41,27 +56,30 @@ passport.use(
         );
 
         if (existing.rows.length) {
-          if (intent === "signup") {
+          const existingUser = existing.rows[0];
+          const normalizedRole = normalizeRole(existingUser.role);
+          const onboardingComplete = await hasCompletedRoleSetup(existingUser.id, normalizedRole);
+
+          if (intent === "signup" && onboardingComplete) {
             return done(null, false, { message: "Google account already in use" });
           }
 
-          const existingUser = existing.rows[0];
-          const normalizedRole = normalizeRole(existingUser.role);
-
           if (normalizedRole !== existingUser.role) {
             const updated = await pool.query(
-              "UPDATE users SET role=$1, updated_at=CURRENT_TIMESTAMP WHERE id=$2 RETURNING *",
+              "UPDATE users SET role=$1, is_verified=true, updated_at=CURRENT_TIMESTAMP WHERE id=$2 RETURNING *",
               [normalizedRole, existingUser.id]
             );
+            updated.rows[0]._isNew = !onboardingComplete;
             return done(null, updated.rows[0]);
           }
 
+          existingUser._isNew = !onboardingComplete;
           return done(null, existingUser);
         }
 
         const result = await pool.query(
-          `INSERT INTO users (full_name, email, role, password_hash)
-           VALUES ($1, $2, $3, 'GOOGLE_AUTH')
+          `INSERT INTO users (full_name, email, role, password_hash, is_verified)
+           VALUES ($1, $2, $3, 'GOOGLE_AUTH', true)
            RETURNING *`,
           [name, email, requestedRole]
         );

@@ -19,11 +19,16 @@ async function migrate() {
       console.log("Column already exists.");
     }
 
-    process.exit(0);
   } catch (err) {
     console.error("Migration error:", err.message);
-    process.exit(1);
+    throw err;
   }
 }
 
-migrate();
+export default migrate;
+
+if (process.argv[1] && import.meta.url === `file:///${process.argv[1].replace(/\\/g, "/")}`) {
+  migrate()
+    .then(() => process.exit(0))
+    .catch(() => process.exit(1));
+}

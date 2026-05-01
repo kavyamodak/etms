@@ -8,8 +8,9 @@ export const getApiBaseUrl = () => {
 
   if (env.DEV) return 'http://localhost:5000/api';
 
-  console.error('Missing VITE_API_URL. Set it in Vercel to your Render backend URL, for example https://your-render-service.onrender.com/api');
-  return '/api';
+  throw new Error(
+    'Missing VITE_API_URL. Set it in Vercel to your Render backend URL, for example https://your-render-service.onrender.com/api'
+  );
 };
 
 // API base URL. In production this must come from Vercel's VITE_API_URL env var.

@@ -4,13 +4,14 @@ import jwt from "jsonwebtoken";
 import passport from "passport";
 import pool from "../config/db.js";
 import dotenv from "dotenv";
+import { getFrontendUrl } from "../config/runtimeUrls.js";
 import { sendResetEmail, sendOTPEmail } from "../utils/email.js";
 
 dotenv.config();
 
 const router = express.Router();
 const validRoles = ["admin", "employee", "driver"];
-const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
+const frontendUrl = getFrontendUrl();
 
 const normalizeRole = (role) => {
   if (!role) return "employee";
@@ -50,10 +51,16 @@ router.get(
 
       if (err) {
         console.error("Google Auth Error during callback:", err);
+        if (!frontendUrl) {
+          return res.status(500).json({ error: "FRONTEND_URL is not configured on the backend" });
+        }
         const errDest = intent === "signup" ? "/signup" : "/login";
         return res.redirect(`${frontendUrl}${errDest}?error=oauth_error&message=${encodeURIComponent(err.message)}`);
       }
       if (!user) {
+        if (!frontendUrl) {
+          return res.status(500).json({ error: "FRONTEND_URL is not configured on the backend" });
+        }
         const msg = info && info.message ? info.message : "google_failed";
         const errDest = intent === "signup" ? "/signup" : "/login";
         return res.redirect(`${frontendUrl}${errDest}?error=email_exists&message=${encodeURIComponent(msg)}`);
@@ -84,6 +91,10 @@ router.get(
 
       // We explicitly track if they were newly created via our Passport strategy's _isNew flag hack
       const isSignupFlow = req.user._isNew ? "1" : "0";
+
+      if (!frontendUrl) {
+        return res.status(500).json({ error: "FRONTEND_URL is not configured on the backend" });
+      }
 
       const redirectUrl = `${frontendUrl}/login?token=${encodeURIComponent(token)}&role=${encodeURIComponent(req.user.role)}&email=${encodeURIComponent(req.user.email)}&isNew=${isSignupFlow}`;
       res.redirect(redirectUrl);

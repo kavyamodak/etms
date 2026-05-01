@@ -7,22 +7,15 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import pool from "./config/db.js";
 import passport from "./config/passport.js";
+import { initializeDatabaseIfNeeded } from "./config/databaseBootstrap.js";
+import { getAllowedOrigins, warnIfDeploymentUrlsMissing } from "./config/runtimeUrls.js";
 import authRoutes from "./routes/auth.routes.js";
 import resourceRoutes from "./routes/resources.routes.js";
 import razorpayRoutes from "./routes/razorpay.routes.js";
 
 const app = express();
 const httpServer = createServer(app);
-const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:5173",
-  "http://127.0.0.1:3000",
-  "http://127.0.0.1:5173",
-  frontendUrl,
-]
-  .filter(Boolean)
-  .map((origin) => origin.replace(/\/$/, ""));
+const allowedOrigins = getAllowedOrigins();
 
 const corsOriginValidator = (origin, callback) => {
   if (!origin) {
@@ -165,12 +158,6 @@ const syncTripStatuses = async () => {
   }
 };
 
-// Run the sync function immediately on server startup to catch up on any missed events while offline
-syncTripStatuses();
-
-// Then run it every 60 seconds
-setInterval(syncTripStatuses, 60000);
-
 // ─── Express middleware ──────────────────────────────────────────
 app.use(cors({
   origin: corsOriginValidator,
@@ -211,8 +198,21 @@ pool.connect()
   .then(() => console.log("✅ Connected to PostgreSQL"))
   .catch(err => console.error("❌ PostgreSQL error:", err.message));
 
+try {
+  await initializeDatabaseIfNeeded();
+} catch (err) {
+  console.error("❌ Database bootstrap error:", err.message);
+}
+
+// Run the sync function immediately on server startup to catch up on any missed events while offline
+syncTripStatuses();
+
+// Then run it every 60 seconds
+setInterval(syncTripStatuses, 60000);
+
 // ─── Start server ────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
 httpServer.listen(PORT, () => {
+  warnIfDeploymentUrlsMissing();
   console.log(`✅ Server + Socket.IO running on port ${PORT}`);
 });
