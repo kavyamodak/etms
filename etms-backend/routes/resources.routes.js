@@ -20,6 +20,34 @@ const normalizeMumbaiLocation = (value) => {
   return `${raw}, ${MUMBAI_LOCATION_SUFFIX}`;
 };
 
+const restoreIdleDrivers = async (db, driverId = null) => {
+  const params = [];
+  let driverFilter = '';
+
+  if (driverId != null) {
+    params.push(driverId);
+    driverFilter = `AND d.id = $${params.length}`;
+  }
+
+  await db.query(
+    `
+      UPDATE drivers d
+      SET status = 'active',
+          updated_at = CURRENT_TIMESTAMP
+      WHERE d.vehicle_id IS NOT NULL
+        AND COALESCE(d.status, 'active') <> 'on_leave'
+        ${driverFilter}
+        AND NOT EXISTS (
+          SELECT 1
+          FROM trips t
+          WHERE t.driver_id = d.id
+            AND t.status IN ('scheduled', 'in_progress')
+        )
+    `,
+    params
+  );
+};
+
 // Middleware to verify JWT token
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -68,7 +96,7 @@ router.post('/onboarding/employee', verifyToken, async (req, res) => {
       [req.user.id, employeeName, phone]
     );
 
-    const composedLocation = `Address: ${address || ''}; Pickup: ${pickupPoint || ''}`;
+    const storedPickupPoint = String(pickupPoint || '').trim() || null;
 
     let employeeResult = await pool.query(
       `UPDATE employees
@@ -79,7 +107,7 @@ router.post('/onboarding/employee', verifyToken, async (req, res) => {
            updated_at = CURRENT_TIMESTAMP
        WHERE user_id = $1
        RETURNING *`,
-      [req.user.id, employeeId, department || null, projectCode || null, composedLocation]
+      [req.user.id, employeeId, department || null, projectCode || null, storedPickupPoint]
     );
 
     if (employeeResult.rows.length === 0) {
@@ -88,7 +116,7 @@ router.post('/onboarding/employee', verifyToken, async (req, res) => {
         `INSERT INTO employees (user_id, employee_id, department, designation, location)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING *`,
-        [req.user.id, employeeId, department || null, projectCode || null, composedLocation]
+        [req.user.id, employeeId, department || null, projectCode || null, storedPickupPoint]
       );
     }
 
@@ -99,7 +127,21 @@ router.post('/onboarding/employee', verifyToken, async (req, res) => {
       employee: employeeResult.rows[0],
     });
   } catch (err) {
-    return res.status(500).json({ error: err.message });
+    if (err.code === '23505') {
+      if (String(err.constraint || '').includes('employees_employee_id_key')) {
+        return res.status(400).json({ error: 'Employee ID already exists. Please use a different Employee ID.' });
+      }
+      if (String(err.constraint || '').includes('employees_user_id_key')) {
+        return res.status(400).json({ error: 'Employee profile already exists for this account.' });
+      }
+    }
+
+    return res.status(500).json({
+      error: 'Failed to save employee onboarding',
+      detail: err.message,
+      code: err.code,
+      constraint: err.constraint,
+    });
   }
 });
 
@@ -246,10 +288,12 @@ router.post('/trips', verifyToken, async (req, res) => {
         );
       }
     } else {
+      await restoreIdleDrivers(pool);
+
       const availDriver = await pool.query(`
         SELECT d.id AS driver_id, d.vehicle_id
         FROM drivers d
-        WHERE d.status = 'active'
+        WHERE COALESCE(d.status, 'active') <> 'on_leave'
           AND d.vehicle_id IS NOT NULL
           AND NOT EXISTS (
             SELECT 1 FROM trips t
@@ -307,16 +351,16 @@ router.post('/trips', verifyToken, async (req, res) => {
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
     console.log(`\n[OTP] TRIP START: ${otp} for Route ${route_id}\n`);
 
-    // 4. Create the trip (Immediately 'in_progress')
+    // 4. Create the trip in scheduled state. It only starts after OTP verification.
     const tripResult = await pool.query(`
       INSERT INTO trips
         (employee_id, driver_id, vehicle_id, route_id,
          start_location, end_location, scheduled_time, actual_start_time,
          expected_completion_time, total_duration, total_distance,
          status, match_method, created_at, otp)
-      VALUES ($1::integer, $2::integer, $3::integer, $4::integer, $5, $6, $7::timestamp, NOW(), 
-              NOW() + ($9::text || ' seconds')::INTERVAL, $9::integer, $10::numeric,
-              'in_progress', $8, NOW(), $11)
+      VALUES ($1::integer, $2::integer, $3::integer, $4::integer, $5, $6, $7::timestamp, NULL,
+              NULL, $9::integer, $10::numeric,
+              'scheduled', $8, NOW(), $11)
       RETURNING *
     `, [
       employee_id, driver_id, vehicle_id, route_id,
@@ -330,6 +374,25 @@ router.post('/trips', verifyToken, async (req, res) => {
         `UPDATE drivers SET status = 'inactive', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
         [driver_id]
       );
+    }
+
+    try {
+      const empEmailResult = await pool.query(
+        `SELECT u.email
+         FROM employees e
+         JOIN users u ON e.user_id = u.id
+         WHERE e.id = $1`,
+        [employee_id]
+      );
+
+      if (empEmailResult.rows.length > 0) {
+        const email = empEmailResult.rows[0].email;
+        sendTripOTPEmail(email, otp, start_location, end_location || start_location, scheduled_time)
+          .then(() => console.log(`✅ Trip OTP email sent to ${email} (OTP: ${otp})`))
+          .catch(err => console.error(`❌ Failed to send trip OTP email to ${email}:`, err));
+      }
+    } catch (emailErr) {
+      console.error('Error fetching employee email for trip notification:', emailErr);
     }
 
     return res.json({
@@ -417,9 +480,9 @@ router.post('/admin/routes', verifyToken, async (req, res) => {
            start_location, end_location, scheduled_time, actual_start_time,
            expected_completion_time, total_duration, total_distance,
            status, match_method, created_at, otp)
-        VALUES ($1::integer, $2::integer, $3::integer, $4::integer, $5, $6, $7::timestamp, NOW(), 
-                NOW() + ($8::text || ' seconds')::INTERVAL, $8::integer, $9::numeric,
-                'in_progress', 'admin_assigned', CURRENT_TIMESTAMP, $10)
+        VALUES ($1::integer, $2::integer, $3::integer, $4::integer, $5, $6, $7::timestamp, NULL,
+                NULL, $8::integer, $9::numeric,
+                'scheduled', 'admin_assigned', CURRENT_TIMESTAMP, $10)
         RETURNING *
       `, [
         emp_id, driver_id, vehicle_id, route_id,
@@ -427,6 +490,21 @@ router.post('/admin/routes', verifyToken, async (req, res) => {
         scheduled_time, durationSeconds, distanceMeters, otp
       ]);
       trips.push(tripRes.rows[0]);
+
+      try {
+        const empRes = await client.query(
+          `SELECT u.email FROM employees e JOIN users u ON e.user_id = u.id WHERE e.id = $1`,
+          [emp_id]
+        );
+        if (empRes.rows.length > 0) {
+          const email = empRes.rows[0].email;
+          sendTripOTPEmail(email, otp, start_location, end_location, scheduled_time)
+            .then(() => console.log(`✅ [Admin Route] Trip OTP email sent to ${email} (OTP: ${otp})`))
+            .catch(err => console.error(`❌ [Admin Route] Failed to send email to ${email}:`, err));
+        }
+      } catch (emailErr) {
+        console.error(`Error fetching email for employee ${emp_id}:`, emailErr);
+      }
     }
     
     // Mark driver as busy
@@ -448,6 +526,10 @@ router.post('/admin/routes', verifyToken, async (req, res) => {
 
 
 router.get('/trips', verifyToken, async (req, res) => {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Only admins can view all trips' });
+  }
+
   try {
     const result = await pool.query(
       `SELECT 
@@ -456,9 +538,9 @@ router.get('/trips', verifyToken, async (req, res) => {
          r.route_name,
          t.start_location,
          t.end_location,
-         t.scheduled_time,
-         t.actual_start_time,
-         t.actual_end_time,
+         TO_CHAR(t.scheduled_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS scheduled_time,
+         TO_CHAR(t.actual_start_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_start_time,
+         TO_CHAR(t.actual_end_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_end_time,
          t.status,
          u.full_name AS employee_name,
          u.email AS employee_email,
@@ -492,8 +574,11 @@ router.get('/trips/my-trips', verifyToken, async (req, res) => {
     if (userRole === 'driver') {
       query = `
         SELECT 
-          t.id, t.start_location, t.end_location, t.scheduled_time,
-          t.actual_start_time, t.actual_end_time, t.status,
+          t.id, t.route_id, t.start_location, t.end_location,
+          TO_CHAR(t.scheduled_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS scheduled_time,
+          TO_CHAR(t.actual_start_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_start_time,
+          TO_CHAR(t.actual_end_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_end_time,
+          t.status,
           v.vehicle_number, v.vehicle_type, v.model,
           r.route_name,
           u.full_name as passenger_name,
@@ -509,8 +594,11 @@ router.get('/trips/my-trips', verifyToken, async (req, res) => {
     } else {
       query = `
         SELECT 
-          t.id, t.start_location, t.end_location, t.scheduled_time,
-          t.actual_start_time, t.actual_end_time, t.status,
+          t.id, t.route_id, t.start_location, t.end_location,
+          TO_CHAR(t.scheduled_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS scheduled_time,
+          TO_CHAR(t.actual_start_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_start_time,
+          TO_CHAR(t.actual_end_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_end_time,
+          t.status,
           v.vehicle_number, v.vehicle_type, v.model,
           r.route_name,
           du.full_name as driver_name,
@@ -532,6 +620,38 @@ router.get('/trips/my-trips', verifyToken, async (req, res) => {
   } catch (err) {
     console.error('Trips GET error:', err.message);
     return res.status(500).json({ error: 'Failed to fetch trips' });
+  }
+});
+
+// Completed employee trips that can be selected when submitting feedback.
+// This intentionally does not depend on the feedback-history query, so a
+// legacy feedback table cannot prevent the trip selector from loading.
+router.get('/feedback/eligible-trips', verifyToken, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT
+         t.id,
+         t.start_location,
+         t.end_location,
+         TO_CHAR(t.scheduled_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS scheduled_time,
+         TO_CHAR(t.actual_end_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_end_time,
+         t.status,
+         v.vehicle_number,
+         du.full_name AS driver_name
+       FROM trips t
+       JOIN employees e ON e.id = t.employee_id
+       LEFT JOIN drivers d ON d.id = t.driver_id
+       LEFT JOIN users du ON du.id = d.user_id
+       LEFT JOIN vehicles v ON v.id = t.vehicle_id
+       WHERE e.user_id = $1
+         AND (LOWER(t.status) IN ('completed', 'complete') OR t.actual_end_time IS NOT NULL)
+       ORDER BY COALESCE(t.actual_end_time, t.scheduled_time, t.created_at) DESC`,
+      [req.user.id]
+    );
+    return res.json(result.rows);
+  } catch (err) {
+    console.error('Eligible feedback trips GET error:', err.message);
+    return res.status(500).json({ error: 'Failed to fetch eligible feedback trips' });
   }
 });
 
@@ -680,10 +800,7 @@ router.post('/trips/:id/complete', verifyToken, async (req, res) => {
 
     // 3. Mark driver as active again
     if (driver_id) {
-       await client.query(
-        `UPDATE drivers SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = $1`,
-        [driver_id]
-      );
+      await restoreIdleDrivers(client, driver_id);
     }
 
     await client.query('COMMIT');
@@ -721,6 +838,20 @@ router.post('/trips/:id/complete', verifyToken, async (req, res) => {
       }
 
       const { driver_id: tripDriverId, employee_user_id: passengerUserId } = tripRes.rows[0];
+
+      // Feedback must be submitted by a participant of the selected trip.
+      if (userRole === 'employee' && userId !== passengerUserId) {
+        return res.status(403).json({ error: 'You can only review your own trips' });
+      }
+      if (userRole === 'driver') {
+        const driverUserResult = await pool.query(
+          `SELECT 1 FROM drivers WHERE id = $1 AND user_id = $2`,
+          [tripDriverId, userId]
+        );
+        if (driverUserResult.rows.length === 0) {
+          return res.status(403).json({ error: 'You can only review trips assigned to you' });
+        }
+      }
 
       // Determine the participants
       // If submitter is a driver, the target user_id in the feedback table will be the passenger
@@ -1516,6 +1647,8 @@ router.post('/trips', verifyToken, async (req, res) => {
     let vehicle_id = bodyVehicleId || null;
 
     if (!driver_id) {
+      await restoreIdleDrivers(pool);
+
       // 🧪 TESTING: Always try Suyash (driver_id=5) first
       // Falls back to least-busy available driver if Suyash is busy/inactive
       const TEST_PREFERRED_DRIVER_ID = 5;
@@ -1524,7 +1657,7 @@ router.post('/trips', verifyToken, async (req, res) => {
         `SELECT d.id, d.vehicle_id
          FROM drivers d
          WHERE d.id = $1
-           AND d.status = 'active'
+           AND COALESCE(d.status, 'active') <> 'on_leave'
            AND d.vehicle_id IS NOT NULL
            AND NOT EXISTS (
              SELECT 1 FROM trips t
@@ -1546,7 +1679,7 @@ router.post('/trips', verifyToken, async (req, res) => {
           `SELECT d.id, d.vehicle_id, COUNT(t.id) AS trip_count
            FROM drivers d
            LEFT JOIN trips t ON t.driver_id = d.id
-           WHERE d.status = 'active'
+           WHERE COALESCE(d.status, 'active') <> 'on_leave'
              AND d.vehicle_id IS NOT NULL
              AND NOT EXISTS (
                SELECT 1 FROM trips t2
@@ -1679,19 +1812,7 @@ router.put('/trips/:id', verifyToken, async (req, res) => {
     if (status === 'completed' || status === 'cancelled') {
       const driverToFree = driver_id || currentDriverId;
       if (driverToFree) {
-        // Only set active if driver has no other active trips
-        await pool.query(
-          `UPDATE drivers
-           SET status = 'active', updated_at = CURRENT_TIMESTAMP
-           WHERE id = $1
-             AND NOT EXISTS (
-               SELECT 1 FROM trips t
-               WHERE t.driver_id = $1
-                 AND t.id != $2
-                 AND t.status IN ('scheduled', 'in_progress')
-             )`,
-          [driverToFree, req.params.id]
-        );
+        await restoreIdleDrivers(pool, driverToFree);
       }
 
       // NEW Feature: Auto-remove route once ALL trips for it are completed/cancelled (User Request)
@@ -1737,16 +1858,7 @@ router.put('/trips/:id', verifyToken, async (req, res) => {
       );
       // Free old driver if they no longer have active trips
       if (currentDriverId && currentDriverId !== driver_id) {
-        await pool.query(
-          `UPDATE drivers
-           SET status = 'active', updated_at = CURRENT_TIMESTAMP
-           WHERE id = $1
-             AND NOT EXISTS (
-               SELECT 1 FROM trips t
-               WHERE t.driver_id = $1 AND t.status IN ('scheduled', 'in_progress')
-             )`,
-          [currentDriverId]
-        );
+        await restoreIdleDrivers(pool, currentDriverId);
       }
     }
 
@@ -2010,9 +2122,18 @@ router.get('/routes', verifyToken, async (req, res) => {
     `;
     let params = [];
 
-    // Filter by assigned driver if the requester is a driver
+    // Drivers can see routes assigned to them; employees can only see routes
+    // that have one of their trips. Admins retain access to all routes.
     if (req.user.role === 'driver') {
       query += ` WHERE d.user_id = $1`;
+      params.push(req.user.id);
+    } else if (req.user.role !== 'admin') {
+      query += ` WHERE EXISTS (
+        SELECT 1
+        FROM trips t
+        JOIN employees e ON e.id = t.employee_id
+        WHERE t.route_id = r.id AND e.user_id = $1
+      )`;
       params.push(req.user.id);
     }
 
@@ -2037,14 +2158,29 @@ router.get('/routes', verifyToken, async (req, res) => {
 
 router.get('/routes/:id', verifyToken, async (req, res) => {
   try {
-    const result = await pool.query(`
+    let query = `
       SELECT r.*, u.full_name as driver_name, v.vehicle_number
       FROM routes r
       LEFT JOIN drivers d ON r.assigned_driver_id = d.id
       LEFT JOIN users u ON d.user_id = u.id
       LEFT JOIN vehicles v ON r.vehicle_id = v.id
-      WHERE r.id = $1
-    `, [req.params.id]);
+      WHERE r.id = $1`;
+    const params = [req.params.id];
+
+    if (req.user.role === 'driver') {
+      query += ` AND d.user_id = $2`;
+      params.push(req.user.id);
+    } else if (req.user.role !== 'admin') {
+      query += ` AND EXISTS (
+        SELECT 1
+        FROM trips t
+        JOIN employees e ON e.id = t.employee_id
+        WHERE t.route_id = r.id AND e.user_id = $2
+      )`;
+      params.push(req.user.id);
+    }
+
+    const result = await pool.query(query, params);
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Route not found' });

@@ -119,12 +119,14 @@ CREATE TABLE IF NOT EXISTS feedback (
     trip_id INTEGER REFERENCES trips(id),
     user_id INTEGER NOT NULL REFERENCES users(id),
     driver_id INTEGER REFERENCES drivers(id),
+  submitted_by_role VARCHAR(20) CHECK (submitted_by_role IN ('employee', 'driver')),
     feedback_type VARCHAR(50) CHECK (feedback_type IN ('appreciation', 'complaint', 'suggestion')),
     message TEXT,
     rating INTEGER CHECK (rating >= 1 AND rating <= 5),
     is_resolved BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  resolved_at TIMESTAMP
 );
 
 -- 9. ADMIN_LOGS TABLE
@@ -234,12 +236,16 @@ FROM users WHERE email = 'rajesh@etms.com' AND NOT EXISTS (
 CREATE TABLE IF NOT EXISTS feedback (
     id SERIAL PRIMARY KEY,
     trip_id INTEGER REFERENCES trips(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id),
+  driver_id INTEGER REFERENCES drivers(id),
+  submitted_by_role VARCHAR(20) CHECK (submitted_by_role IN ('employee', 'driver')),
     feedback_type VARCHAR(20) NOT NULL CHECK (feedback_type IN ('complaint', 'appreciation', 'suggestion')),
     message TEXT NOT NULL,
     rating INTEGER CHECK (rating >= 1 AND rating <= 5),
     is_resolved BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT NOW(),
-    resolved_at TIMESTAMP
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+  resolved_at TIMESTAMP
 );
 
 -- Add average_rating column to drivers table if not exists

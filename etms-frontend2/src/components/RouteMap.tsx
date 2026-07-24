@@ -105,8 +105,9 @@ export default function RouteMap() {
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true);
     try {
+      const isEmployee = user?.role !== 'admin' && user?.role !== 'driver';
       const [routesData, tripsData] = await Promise.all([
-        routesAPI.getAll(),
+        isEmployee ? Promise.resolve([]) : routesAPI.getAll(),
         (user?.role === 'admin' ? tripAPI.getAll() : tripAPI.getUserTrips()),
       ]);
 
@@ -143,7 +144,7 @@ export default function RouteMap() {
           });
         });
         routesWithData = Array.from(groupedMap.values());
-      } else if (Array.isArray(routesData) && routesData.length > 0) {
+      } else if (user?.role === 'admin' && Array.isArray(routesData) && routesData.length > 0) {
         routesWithData = (routesData as any[])
           .filter((r: any) => r.status !== 'completed' && r.status !== 'cancelled')
           .map((r: any) => ({

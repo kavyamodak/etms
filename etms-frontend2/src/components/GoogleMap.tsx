@@ -44,6 +44,7 @@ export default function GoogleMap({
   const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   const isValidCoordinate = (value: unknown): value is { lat: number; lng: number } => {
     if (!value || typeof value !== "object") return false;
@@ -202,6 +203,7 @@ export default function GoogleMap({
 
   const renderRoute = () => {
     if (!googleMapRef.current || !directionsRendererRef.current) return;
+    setMapError(null);
 
     if (!origin || !destination) {
       clearRenderedRoute();
@@ -270,6 +272,11 @@ export default function GoogleMap({
         }
 
         console.warn("Directions rendering failed, using marker fallback:", status);
+        setMapError(
+          status === google.maps.DirectionsStatus.REQUEST_DENIED
+            ? 'Map routing is unavailable because the Google Maps billing setting is not enabled for this project.'
+            : 'Map routing could not be calculated for this route.'
+        );
         clearRenderedRoute();
 
         const stops = [
@@ -311,6 +318,7 @@ export default function GoogleMap({
               bounds.extend(position);
             } else {
               console.warn(`Fallback geocoding failed for ${stop.title}:`, geocodeStatus);
+              setMapError('Map fallback geocoding is unavailable because the Google Maps billing setting is not enabled for this project.');
             }
             onResolved();
           });
@@ -383,6 +391,11 @@ export default function GoogleMap({
       {!isLoaded && (
         <div className="flex items-center justify-center w-full h-full bg-gray-50 animate-pulse">
           <p className="text-gray-400 font-bold uppercase tracking-widest">Initialising Radar...</p>
+        </div>
+      )}
+      {mapError && (
+        <div className="absolute left-3 right-3 top-3 z-10 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-800 shadow-sm">
+          {mapError}
         </div>
       )}
       <div ref={mapRef} className="w-full h-full" />

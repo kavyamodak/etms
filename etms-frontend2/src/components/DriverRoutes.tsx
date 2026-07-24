@@ -16,6 +16,7 @@ import TranzoLogo from './TranzoLogo';
 import { routesAPI } from '../services/api';
 import { getSocket } from '../services/socket';
 import MapRouteLeaflet from './MapRouteLeaflet';
+import { formatTripDate, formatTripTime } from '../utils/tripTime';
 
 
 interface DriverTrip {
@@ -194,7 +195,7 @@ function GoogleMapsModal({ route, onClose }: { route: DriverTrip; onClose: () =>
             <div className="mt-12 p-6 bg-emerald-50 rounded-2xl border border-emerald-100/50">
               <div className="flex items-center justify-between py-2 border-b border-emerald-100/50">
                 <span className="text-[9px] font-bold text-gray-400  tracking-widest">Scheduled</span>
-                <span className="text-xs font-bold text-gray-900">{new Date(route.scheduled_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                <span className="text-xs font-bold text-gray-900">{formatTripTime(route.scheduled_time, 'en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
               <div className="flex items-center justify-between py-2">
                 <span className="text-[9px] font-bold text-gray-400  tracking-widest">Employee</span>
@@ -471,10 +472,10 @@ export default function DriverRoutes() {
                       >
                         <TableCell>
                           <p className="font-medium text-gray-800">
-                            {new Date(route.scheduled_time).toLocaleDateString()}
+                            {formatTripDate(route.scheduled_time)}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {new Date(route.scheduled_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {formatTripTime(route.scheduled_time, 'en-IN', { hour: '2-digit', minute: '2-digit' })}
                           </p>
                         </TableCell>
                         <TableCell>

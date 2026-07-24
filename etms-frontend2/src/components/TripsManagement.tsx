@@ -8,6 +8,7 @@ import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import TranzoLogo from './TranzoLogo';
+import { formatTripDateTime } from '../utils/tripTime';
 
 interface Trip {
   id: number;
@@ -237,8 +238,9 @@ export default function TripsManagement() {
         const updatedTrips = await tripAPI.getAll();
         setTrips(updatedTrips);
       } else {
-        const newTrip = await tripAPI.requestTrip(payload);
-        setTrips([newTrip, ...trips]);
+        await tripAPI.requestTrip(payload);
+        const updatedTrips = await tripAPI.getAll();
+        setTrips(updatedTrips);
 
         // Mark assigned driver as inactive
         if (driverIdToUse) {
@@ -592,7 +594,7 @@ export default function TripsManagement() {
                           </div>
                           <div className="flex items-center gap-2">
                             <Calendar className="w-4 h-4" />
-                            <span>{new Date(trip.scheduled_time).toLocaleString()}</span>
+                            <span>{formatTripDateTime(trip.scheduled_time)}</span>
                           </div>
                           {trip.driver_name && (
                             <div className="flex items-center gap-2">

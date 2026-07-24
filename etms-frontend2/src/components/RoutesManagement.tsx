@@ -472,6 +472,27 @@ export default function RoutesManagement() {
     setFormData(prev => ({ ...prev, waypoints: prev.waypoints.filter((_, i) => i !== idx) }));
   };
 
+  const filteredEmployees = employees.filter((employee) => {
+    const search = employeeSearch.trim().toLowerCase();
+    if (!search) return true;
+    return [employee.full_name, employee.employee_id, employee.department, employee.location]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(search));
+  });
+
+  const toggleEmployeeSelection = (employeeId: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      selected_employees: prev.selected_employees.includes(employeeId)
+        ? prev.selected_employees.filter((id) => id !== employeeId)
+        : [...prev.selected_employees, employeeId],
+    }));
+  };
+
+  const selectedEmployeeNames = formData.selected_employees
+    .map((id) => employees.find((employee) => employee.id === id)?.full_name)
+    .filter(Boolean) as string[];
+
   useEffect(() => {
     if (routes.length > 0 && !selectedRoute) {
       setSelectedRoute(routes[0]);
@@ -727,6 +748,75 @@ export default function RoutesManagement() {
                             </SelectContent>
                           </Select>
                         </Field>
+                        <div className="md:col-span-2">
+                          <Field label="Employees">
+                            <div className="space-y-3 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-3">
+                              <div className="flex flex-col gap-2 md:flex-row md:items-center">
+                                <Input
+                                  placeholder="Search employees"
+                                  value={employeeSearch}
+                                  onChange={(e) => {
+                                    setEmployeeSearch(e.target.value);
+                                    setShowEmployeeDropdown(true);
+                                  }}
+                                  className="rounded-xl"
+                                />
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="rounded-xl"
+                                  onClick={() => setShowEmployeeDropdown((prev) => !prev)}
+                                >
+                                  {showEmployeeDropdown ? 'Hide' : 'Add Employees'}
+                                </Button>
+                              </div>
+
+                              <div className="flex flex-wrap gap-2">
+                                {selectedEmployeeNames.length === 0 ? (
+                                  <span className="text-xs text-slate-500">No employees selected yet.</span>
+                                ) : (
+                                  selectedEmployeeNames.map((name) => (
+                                    <span key={name} className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">
+                                      {name}
+                                    </span>
+                                  ))
+                                )}
+                              </div>
+
+                              {showEmployeeDropdown && (
+                                <div className="max-h-56 overflow-auto rounded-xl border border-emerald-100 bg-white p-2 shadow-sm">
+                                  {filteredEmployees.length === 0 ? (
+                                    <p className="px-2 py-3 text-xs text-slate-500">No matching employees found.</p>
+                                  ) : (
+                                    filteredEmployees.map((employee) => {
+                                      const isSelected = formData.selected_employees.includes(employee.id);
+                                      return (
+                                        <button
+                                          type="button"
+                                          key={employee.id}
+                                          onClick={() => toggleEmployeeSelection(employee.id)}
+                                          className={`flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-sm transition ${
+                                            isSelected ? 'bg-emerald-600 text-white' : 'hover:bg-emerald-50 text-slate-700'
+                                          }`}
+                                        >
+                                          <span>
+                                            <span className="block font-medium">{employee.full_name}</span>
+                                            <span className={`block text-xs ${isSelected ? 'text-emerald-100' : 'text-slate-500'}`}>
+                                              {employee.employee_id || 'Employee'} • {employee.department || 'Department'}
+                                            </span>
+                                          </span>
+                                          <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${isSelected ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-700'}`}>
+                                            {isSelected ? 'Selected' : 'Select'}
+                                          </span>
+                                        </button>
+                                      );
+                                    })
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </Field>
+                        </div>
                       </div>
                     </section>
 

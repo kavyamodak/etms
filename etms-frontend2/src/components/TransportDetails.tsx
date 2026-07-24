@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNotify } from '../context/NotificationContext';
 import GoogleMap from './GoogleMap';
 import { getSocket } from '../services/socket';
+import { formatTripDateTime } from '../utils/tripTime';
 
 // Haversine formula to calculate distance between two coordinates in km
 function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -257,7 +258,7 @@ export default function TransportDetails() {
                     </div>
                     <div>
                       <p className="text-emerald-100 text-[10px] font-black uppercase tracking-widest mb-0.5">Pickup Time</p>
-                      <p className="font-bold">{new Date(trip.scheduled_time).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+                      <p className="font-bold">{formatTripDateTime(trip.scheduled_time, 'en-US', { dateStyle: 'medium', timeStyle: 'short' })}</p>
                     </div>
                   </div>
                 </div>

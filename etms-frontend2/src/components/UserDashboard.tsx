@@ -34,6 +34,7 @@ import TranzoLogo from './TranzoLogo';
 import { tripAPI } from '../services/api';
 import RazorpayPayment from './RazorpayPayment';
 import { UserLiveMapUI } from './UserLiveMapUI';
+import { formatTripDate, formatTripTime } from '../utils/tripTime';
 
 function getInitials(fullName?: string, fallback?: string) {
   const raw = (fullName || fallback || '').trim();
@@ -70,12 +71,12 @@ export default function UserDashboard() {
             id: r.id,
             otp: r.otp,
             rawTime: new Date(r.scheduled_time).getTime(),
-            date: new Date(r.scheduled_time).toLocaleDateString('en-US', {
+            date: formatTripDate(r.scheduled_time, 'en-US', {
               month: 'short',
               day: 'numeric',
               year: 'numeric',
             }),
-            time: new Date(r.scheduled_time).toLocaleTimeString('en-US', {
+            time: formatTripTime(r.scheduled_time, 'en-US', {
               hour: '2-digit',
               minute: '2-digit',
             }),
@@ -86,7 +87,7 @@ export default function UserDashboard() {
                 : r.status === 'in_progress'
                   ? 'In Progress'
                   : r.status === 'scheduled'
-                    ? 'Scheduled'
+                    ? 'Waiting for OTP'
                     : r.status === 'pending'
                       ? 'Pending'
                       : r.status,
@@ -217,7 +218,7 @@ export default function UserDashboard() {
                   <p className="text-emerald-100 font-medium tracking-wide mb-1">Next Trip</p>
                   <h3 className="text-2xl font-bold text-white tracking-tight">
                     {nextActiveTrip
-                      ? new Date(nextActiveTrip.rawTime).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ', ' + nextActiveTrip.time
+                      ? `${nextActiveTrip.date}, ${nextActiveTrip.time}`
                       : 'No upcoming trips'}
                   </h3>
                 </div>

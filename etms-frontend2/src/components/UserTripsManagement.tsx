@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { tripAPI } from '../services/api';
 import { useAuth } from '../context/AuthContext';
+import { formatTripDateTime } from '../utils/tripTime';
 import {
   LayoutDashboard,
   MapPin,
@@ -113,8 +114,8 @@ export default function UserTripsManagement() {
         scheduled_time: formData.scheduled_time,
       };
 
-      const newTrip = await tripAPI.requestTrip(payload);
-      setTrips([newTrip, ...trips]);
+      await tripAPI.requestTrip(payload);
+      await fetchUserTrips();
 
       setFormData({
         start_location: '',
@@ -167,6 +168,7 @@ export default function UserTripsManagement() {
   };
 
   const getDisplayStatus = (trip: Trip) => {
+    if (trip.status === 'scheduled') return 'waiting_for_otp';
     return trip.status;
   };
 
@@ -368,7 +370,7 @@ export default function UserTripsManagement() {
                           </div>
                           <div className="flex items-center gap-2">
                             <Calendar className="w-4 h-4" />
-                            <span>{new Date(trip.scheduled_time).toLocaleString()}</span>
+                            <span>{formatTripDateTime(trip.scheduled_time)}</span>
                           </div>
                           {trip.driver_name && (
                             <div className="flex items-center gap-2">

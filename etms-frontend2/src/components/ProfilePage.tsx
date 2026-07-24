@@ -25,9 +25,10 @@ function parseEmployeeLocation(raw?: string) {
   const text = String(raw || '');
   const addrMatch = text.match(/Address:\s*([^;]*)(?:;|$)/i);
   const pickupMatch = text.match(/Pickup:\s*(.*)$/i);
+  const hasLegacyFormat = /Address:|Pickup:/i.test(text);
   return {
-    address: (addrMatch?.[1] || '').trim(),
-    pickup: (pickupMatch?.[1] || '').trim(),
+    address: hasLegacyFormat ? (addrMatch?.[1] || '').trim() : '',
+    pickup: hasLegacyFormat ? (pickupMatch?.[1] || '').trim() : text.trim(),
   };
 }
 

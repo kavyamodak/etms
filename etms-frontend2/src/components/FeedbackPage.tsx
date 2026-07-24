@@ -31,6 +31,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import TranzoLogo from './TranzoLogo';
 import { feedbackAPI, tripAPI } from '../services/api';
+import { formatTripDate } from '../utils/tripTime';
 
 export default function FeedbackPage() {
   const navigate = useNavigate();
@@ -55,15 +56,35 @@ export default function FeedbackPage() {
     const loadData = async () => {
       setLoading(true);
       try {
-        const [trips, history] = await Promise.all([
+        const [eligibleTripsResult, tripsResult, historyResult] = await Promise.allSettled([
+          tripAPI.getFeedbackEligibleTrips(),
           tripAPI.getUserTrips(),
-          feedbackAPI.getMyFeedback() // This fetches feedbacks exclusively for the current user
+          feedbackAPI.getMyFeedback()
         ]);
 
-        const completedTrips = (trips || []).filter((t: any) => t.status === 'completed');
+        // Keep the trip selector usable even if the history endpoint is still
+        // failing on a deployment with the old feedback schema.
+        const eligibleTrips = eligibleTripsResult.status === 'fulfilled' ? eligibleTripsResult.value : [];
+        const trips = tripsResult.status === 'fulfilled' ? tripsResult.value : [];
+        const history = historyResult.status === 'fulfilled' ? historyResult.value : [];
+
+        if (eligibleTripsResult.status === 'rejected') {
+          console.error('Failed to load eligible feedback trips:', eligibleTripsResult.reason);
+        }
+        if (tripsResult.status === 'rejected') {
+          console.error('Failed to load user trips:', tripsResult.reason);
+        }
+        if (historyResult.status === 'rejected') {
+          console.error('Failed to load feedback history:', historyResult.reason);
+        }
+
+        const sourceTrips = eligibleTrips.length > 0 ? eligibleTrips : trips || [];
+        const completedTrips = sourceTrips.filter((t: any) =>
+          ['completed', 'complete'].includes(String(t.status || '').toLowerCase()) || Boolean(t.actual_end_time)
+        );
         setRecentTrips(completedTrips.map((t: any) => ({
           id: t.id,
-          label: `${t.driver_name || 'Assigned Driver'} (${new Date(t.scheduled_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })})`,
+          label: `${t.driver_name || 'Assigned Driver'} (${formatTripDate(t.scheduled_time, 'en-US', { month: 'short', day: 'numeric', year: 'numeric' })})`,
           driver: t.driver_name || 'TBD',
           vehicle: t.vehicle_number || 'TBD',
         })));
@@ -274,7 +295,7 @@ export default function FeedbackPage() {
                           </SelectTrigger>
                           <SelectContent>
                             {recentTrips.map((trip) => (
-                              <SelectItem key={trip.id} value={trip.id}>
+                              <SelectItem key={trip.id} value={String(trip.id)}>
                                 {trip.label}
                               </SelectItem>
                             ))}

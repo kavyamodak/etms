@@ -27,6 +27,18 @@ import { tripAPI, profileAPI } from '../services/api';
 import TranzoLogo from './TranzoLogo';
 import { useNotify } from '../context/NotificationContext';
 
+function getPickupPoint(raw?: string) {
+  const text = String(raw || '').trim();
+  if (!text) return '';
+
+  const pickupMatch = text.match(/Pickup:\s*(.*)$/i);
+  if (pickupMatch?.[1]) {
+    return pickupMatch[1].trim();
+  }
+
+  return text;
+}
+
 export default function RequestTransport() {
   const navigate = useNavigate();
   const { logout, user } = useAuth();
@@ -50,7 +62,10 @@ export default function RequestTransport() {
       try {
         const profileData = await profileAPI.getMe();
         if (profileData.employee && profileData.employee.location) {
-          setFormData((prev) => ({ ...prev, pickupLocation: profileData.employee.location }));
+          setFormData((prev) => ({
+            ...prev,
+            pickupLocation: getPickupPoint(profileData.employee.location),
+          }));
         }
       } catch (err) {
         console.warn('Failed to load employee profile:', err);

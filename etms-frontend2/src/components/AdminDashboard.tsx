@@ -22,6 +22,7 @@ import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { useAuth } from '../context/AuthContext';
 import TranzoLogo from './TranzoLogo';
+import { formatTripDate, formatTripTime } from '../utils/tripTime';
 import {
   Table,
   TableBody,
@@ -111,10 +112,10 @@ export default function AdminDashboard() {
             id: r.id,
             employee: r.employee_name || '-',
             route: `${r.start_location || ''} → ${r.end_location || ''}`,
-            date: new Date(r.scheduled_time).toLocaleDateString('en-IN', {
+            date: formatTripDate(r.scheduled_time, 'en-IN', {
               day: '2-digit', month: 'short', year: 'numeric',
             }),
-            time: new Date(r.scheduled_time).toLocaleTimeString('en-US', {
+            time: formatTripTime(r.scheduled_time, 'en-US', {
               hour: '2-digit',
               minute: '2-digit',
             }),
@@ -124,7 +125,7 @@ export default function AdminDashboard() {
                 : r.status === 'in_progress'
                   ? 'In Progress'
                   : r.status === 'scheduled'
-                    ? 'Scheduled'
+                    ? 'Waiting for OTP'
                     : r.status,
             driver: r.driver_name || '-',
             vehicle: `${r.vehicle_type || ''} - ${r.vehicle_number || ''}`.trim() || '-',

@@ -13,6 +13,7 @@ import { tripAPI } from '../services/api';
 import { getSocket } from '../services/socket';
 import { useAuth } from '../context/AuthContext';
 import GoogleMap from './GoogleMap';
+import { formatTripTime } from '../utils/tripTime';
 
 // ── Types ────────────────────────────────────────────────────────
 interface LiveTrip {
@@ -481,7 +482,7 @@ export default function LiveTracking() {
                                             )}
                                             <div className="flex items-center gap-2">
                                                 <Clock className="w-3.5 h-3.5 shrink-0" />
-                                                <span>Started: {new Date(trip.scheduled_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                                                <span>Started: {formatTripTime(trip.scheduled_time, 'en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
                                             </div>
                                             {loc ? (
                                                 <div className="flex items-center gap-2 text-emerald-600 font-medium">

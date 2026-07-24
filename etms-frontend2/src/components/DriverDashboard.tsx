@@ -15,6 +15,7 @@ import { useAuth } from '../context/AuthContext';
 import TranzoLogo from './TranzoLogo';
 import { driverAPI, tripAPI, paymentAPI } from '../services/api';
 import MapRouteLeaflet from './MapRouteLeaflet';
+import { formatTripDate, formatTripDateTime, formatTripTime } from '../utils/tripTime';
 
 function statusBadge(status: string) {
   const map: Record<string, string> = {
@@ -24,6 +25,16 @@ function statusBadge(status: string) {
     cancelled: 'bg-red-100 text-red-600',
   };
   return map[status] ?? 'bg-gray-100 text-gray-600';
+}
+
+function statusLabel(status: string) {
+  const map: Record<string, string> = {
+    completed: 'Completed',
+    in_progress: 'In Progress',
+    scheduled: 'Waiting for OTP',
+    cancelled: 'Cancelled',
+  };
+  return map[status] ?? status.replace('_', ' ');
 }
 
 export default function DriverDashboard() {
@@ -133,7 +144,7 @@ export default function DriverDashboard() {
 
   const handleMarkComplete = async (tripId: number) => {
     try {
-      await tripAPI.updateStatus(tripId, 'completed');
+      await tripAPI.completeTrip(tripId);
       await fetchData();
     } catch {
       // silent fail
@@ -293,7 +304,7 @@ export default function DriverDashboard() {
                   <div className="flex items-center gap-2 text-sm">
                     <Calendar className="w-3.5 h-3.5 text-emerald-200 shrink-0" />
                     <span className="truncate">
-                      {new Date(currentAssignment.scheduled_time).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
+                      {formatTripDateTime(currentAssignment.scheduled_time, 'en-IN', { dateStyle: 'medium', timeStyle: 'short' })}
                     </span>
                   </div>
                   {activeTrip && (
@@ -456,9 +467,9 @@ export default function DriverDashboard() {
                       onClick={() => navigate(`/driver/transport-details/${trip.id}`)}
                     >
                       <TableCell className="font-medium">
-                        {new Date(trip.scheduled_time).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                        {formatTripDate(trip.scheduled_time, 'en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
                         <div className="text-sm text-gray-500">
-                          {new Date(trip.scheduled_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                          {formatTripTime(trip.scheduled_time, 'en-IN', { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </TableCell>
                       <TableCell>{trip.route_name || `${trip.start_location} → ${trip.end_location}`}</TableCell>
@@ -466,7 +477,7 @@ export default function DriverDashboard() {
                       <TableCell className="text-sm text-gray-600">{trip.vehicle_number || driver?.vehicle_number || '—'}</TableCell>
                       <TableCell>
                         <span className={`px-3 py-1 rounded-full inline-block text-xs ${statusBadge(trip.status)}`}>
-                          {trip.status.replace('_', ' ')}
+                          {statusLabel(trip.status)}
                         </span>
                       </TableCell>
                     </TableRow>

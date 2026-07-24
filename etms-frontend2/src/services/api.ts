@@ -631,6 +631,16 @@ export const tripAPI = {
     return response.json();
   },
 
+  // Get completed trips available for employee feedback
+  getFeedbackEligibleTrips: async () => {
+    const response = await fetch(`${API_BASE_URL}/feedback/eligible-trips`, {
+      headers: getHeaders(),
+    });
+
+    if (!response.ok) throw new Error('Failed to fetch feedback trips');
+    return response.json();
+  },
+
   // Get all trips (admin)
   getAll: async () => {
     const response = await fetch(`${API_BASE_URL}/trips`, {

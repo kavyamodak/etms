@@ -17,6 +17,7 @@ import TranzoLogo from './TranzoLogo';
 import { driverAPI, routesAPI } from '../services/api';
 import GoogleMap from './GoogleMap';
 import { socket, connectSocket, joinTripRoom, listenForLocationUpdate, listenForTripStatus } from '../services/socket';
+import { formatTripTime } from '../utils/tripTime';
 
 
 function statusBadgeClass(status: string) {
@@ -25,6 +26,11 @@ function statusBadgeClass(status: string) {
   if (status === 'scheduled') return 'bg-gray-100 text-gray-700';
   if (status === 'cancelled') return 'bg-red-100 text-red-600';
   return 'bg-gray-100 text-gray-600';
+}
+
+function statusLabel(status: string) {
+  if (status === 'scheduled') return 'waiting for otp';
+  return status.replace('_', ' ');
 }
 
 export default function DriverAttendance() {
@@ -326,7 +332,7 @@ export default function DriverAttendance() {
                         onClick={() => navigate(`/driver/transport-details/${trip.id}`)}
                       >
                         <TableCell className="font-medium text-gray-900">
-                          {new Date(trip.scheduled_time).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}
+                          {formatTripTime(trip.scheduled_time, 'en-IN', { hour: '2-digit', minute: '2-digit' })}
                         </TableCell>
                         <TableCell>
                           <div className="font-medium text-gray-800 max-w-[180px] truncate">
@@ -347,7 +353,7 @@ export default function DriverAttendance() {
                             {trip.status === 'in_progress' && <RouteIcon className="w-3 h-3" />}
                             {trip.status === 'scheduled' && <Clock className="w-3 h-3" />}
                             {trip.status === 'cancelled' && <XCircle className="w-3 h-3" />}
-                            {trip.status.replace('_', ' ')}
+                            {statusLabel(trip.status)}
                           </span>
                         </TableCell>
                         <TableCell>
