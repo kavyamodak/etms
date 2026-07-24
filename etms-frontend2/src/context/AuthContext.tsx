@@ -269,8 +269,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     sessionStorage.removeItem('oauthInProgress');
     setToken(null);
     setUser(null);
-    // Hard redirect so ProtectedRoute re-evaluation is immediate, regardless of React render timing
-    window.location.href = '/login';
+    // Replace the protected page rather than retaining it in browser history.
+    window.location.replace('/login');
   };
 
   return (

@@ -161,7 +161,7 @@ export default function AdminDashboard() {
 
   const handleLogout = () => {
     logout();
-    window.location.href = '/login';
+    window.location.replace('/login');
   };
 
   return (

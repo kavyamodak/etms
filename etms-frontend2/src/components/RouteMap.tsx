@@ -111,7 +111,10 @@ export default function RouteMap() {
         (user?.role === 'admin' ? tripAPI.getAll() : tripAPI.getUserTrips()),
       ]);
 
-      const timeFilteredTrips = (Array.isArray(tripsData) ? tripsData : []).filter((trip: any) => {
+      const userTrips = Array.isArray(tripsData) ? tripsData : [];
+      setTrips(userTrips);
+
+      const activeTrips = userTrips.filter((trip: any) => {
         const status = trip.status?.toLowerCase();
         return status === 'in_progress' || status === 'scheduled' || status === 'pending';
       });
@@ -120,7 +123,7 @@ export default function RouteMap() {
 
       if (user?.role === 'driver') {
         const groupedMap = new Map();
-        timeFilteredTrips.forEach((trip: any) => {
+        activeTrips.forEach((trip: any) => {
           const rid = trip.route_id || `temp-${trip.id}`;
           if (!groupedMap.has(rid)) {
             groupedMap.set(rid, {
@@ -158,10 +161,13 @@ export default function RouteMap() {
             driver_name: r.driver_name || 'Driver',
             driver_phone: r.driver_phone,
             vehicle_number: r.vehicle_number || '',
-            trip_data: timeFilteredTrips.find((t: any) => t.route_id === r.id)
+            trip_data: activeTrips.find((t: any) => t.route_id === r.id)
           }));
       } else {
-        routesWithData = timeFilteredTrips.map((trip: any) => ({
+        // Employees can review every trip assigned to them. Admin and driver
+        // views remain limited to active trips for live operations.
+        const employeeTrips = user?.role === 'admin' ? activeTrips : userTrips;
+        routesWithData = employeeTrips.map((trip: any) => ({
           id: trip.id,
           route_name: `${trip.start_location} → ${trip.end_location}`,
           start_location: trip.start_location,
@@ -262,6 +268,12 @@ export default function RouteMap() {
            </Button>
            <h1 className="text-2xl font-semibold text-gray-700">Map Page</h1>
         </div>
+
+        {error && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* LEFT CARD - TRIP DETAILS */}

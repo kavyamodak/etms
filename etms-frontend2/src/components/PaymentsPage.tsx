@@ -291,7 +291,7 @@ export default function PaymentsPage() {
     a.click();
   };
 
-  const handleLogout = () => { logout(); window.location.href = '/login'; };
+  const handleLogout = () => { logout(); window.location.replace('/login'); };
 
   const filteredDrivers = drivers.filter(d => {
     if (!searchTerm) return true;

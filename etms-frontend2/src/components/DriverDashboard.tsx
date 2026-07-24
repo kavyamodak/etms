@@ -45,18 +45,20 @@ export default function DriverDashboard() {
 
   const [driverData, setDriverData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [paymentSummary, setPaymentSummary] = useState<any>(null);
 
   const fetchData = useCallback(async () => {
     try {
+      setError('');
       const [data, payRes] = await Promise.all([
         driverAPI.getMyProfile(),
         paymentAPI.getMyDriverPayouts().catch(() => null),
       ]);
       setDriverData(data);
       if (payRes?.success) setPaymentSummary(payRes.summary);
-    } catch {
-      // silently keep existing data or null on failure
+    } catch (err: any) {
+      setError(err.message || 'Unable to load your driver profile. Please complete onboarding and try again.');
     } finally {
       setLoading(false);
     }
@@ -70,7 +72,7 @@ export default function DriverDashboard() {
 
   const handleLogout = () => {
     logout();
-    window.location.href = '/login';
+    window.location.replace('/login');
   };
 
   const menuItems = [
@@ -228,6 +230,11 @@ export default function DriverDashboard() {
 
         {/* Dashboard Content */}
         <main className="p-6 space-y-6">
+          {error && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
 
           {/* ── Stat Cards — identical pattern to Admin dashboardStats ── */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -243,7 +243,7 @@ export default function DriverRoutes() {
 
   const handleLogout = () => {
     logout();
-    window.location.href = '/login';
+    window.location.replace('/login');
   };
 
   // ── Socket.IO: join as driver + stream GPS (only if permission granted) ──

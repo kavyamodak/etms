@@ -382,27 +382,14 @@ type DriverAPI = {
 export const driverAPI: DriverAPI = {
   // Get logged-in driver's own profile, trips and stats
   getMyProfile: async () => {
-    try {
-      const response = await fetch(`${API_BASE_URL}/drivers/me`, {
-        headers: getHeaders(),
-      });
-      if (!response.ok) throw new Error('Failed to fetch driver profile');
-      return response.json();
-    } catch (error) {
-      console.warn('Driver profile API failed, using mock data');
-      // Mock data for demonstration
-      return {
-        id: 1,
-        name: 'John Driver',
-        email: 'john.driver@company.com',
-        phone: '+91-9876543210',
-        license_no: 'DL123456',
-        vehicle_assigned: 'MH01AB1234',
-        status: 'active',
-        total_trips: 45,
-        rating: 4.8
-      };
+    const response = await fetch(`${API_BASE_URL}/drivers/me`, {
+      headers: getHeaders(),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || 'Failed to fetch driver profile');
     }
+    return response.json();
   },
 
   // Get all drivers
@@ -488,7 +475,10 @@ export const driverAPI: DriverAPI = {
       body: JSON.stringify(data),
     });
 
-    if (!response.ok) throw new Error('Failed to save driver onboarding');
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(error.error || error.message || 'Failed to save driver onboarding');
+    }
     return response.json();
   },
 

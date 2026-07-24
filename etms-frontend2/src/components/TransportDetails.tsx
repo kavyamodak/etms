@@ -55,7 +55,7 @@ export default function TransportDetails() {
   const { user } = useAuth();
   const notify = useNotify();
   const [trip, setTrip] = useState<DetailedTrip | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [otp, setOtp] = useState('');
   const [verifying, setVerifying] = useState(false);
@@ -75,6 +75,7 @@ export default function TransportDetails() {
 
   const fetchTripDetails = async (tripId: number) => {
     setLoading(true);
+    setError('');
     try {
       const data = await tripAPI.getById(tripId);
       setTrip(data);
@@ -361,7 +362,7 @@ export default function TransportDetails() {
                   </div>
 
                   {/* Driver Actions Based on Trip Status */}
-                  {trip.status === 'scheduled' && (
+                  {user?.role === 'driver' && trip.status === 'scheduled' && (
                     <div className="mt-6 border-t border-gray-100 pt-6">
                       <h4 className="text-gray-900 font-bold mb-3 flex items-center gap-2">
                         <Lock className="w-4 h-4 text-emerald-600" /> Verify passenger OTP to start trip

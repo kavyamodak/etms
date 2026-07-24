@@ -14,6 +14,20 @@ interface GoogleMapProps {
 
 // v2.x functional API configuration guard
 let isSDKConfigured = false;
+const MUMBAI_LOCATION_SUFFIX = 'Mumbai, Maharashtra, India';
+
+const normalizeMumbaiAddress = (value: string | { lat: number; lng: number }) => {
+  if (typeof value !== 'string') return value;
+
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+
+  const normalized = trimmed.toLowerCase();
+  return normalized.includes('mumbai') || normalized.includes('maharashtra') || normalized.includes('india')
+    ? trimmed
+    : `${trimmed}, ${MUMBAI_LOCATION_SUFFIX}`;
+};
+
 const configureSDK = () => {
   if (isSDKConfigured) return;
   const key = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
@@ -210,11 +224,11 @@ export default function GoogleMap({
       return;
     }
 
-    const resolvedOrigin = typeof origin === 'string' ? origin : (isValidCoordinate(origin) ? origin : null);
-    const resolvedDestination = typeof destination === 'string' ? destination : (isValidCoordinate(destination) ? destination : null);
+    const resolvedOrigin = typeof origin === 'string' ? normalizeMumbaiAddress(origin) : (isValidCoordinate(origin) ? origin : null);
+    const resolvedDestination = typeof destination === 'string' ? normalizeMumbaiAddress(destination) : (isValidCoordinate(destination) ? destination : null);
     const resolvedWaypoints = waypoints
       .map((wp) => ({
-        location: typeof wp.location === 'string' ? wp.location : (isValidCoordinate(wp.location) ? wp.location : null),
+        location: typeof wp.location === 'string' ? normalizeMumbaiAddress(wp.location) : (isValidCoordinate(wp.location) ? wp.location : null),
         stopover: wp.stopover
       }))
       .filter((wp) => wp.location);

@@ -63,7 +63,7 @@ export default function DriverAttendance() {
 
   const handleLogout = () => {
     logout();
-    window.location.href = '/login';
+    window.location.replace('/login');
   };
 
   const menuItems = [

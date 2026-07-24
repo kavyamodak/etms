@@ -198,10 +198,13 @@ router.get('/profile/me', verifyToken, async (req, res) => {
  */
 router.post('/trips', verifyToken, async (req, res) => {
   console.log("🚀 POST /trips hit! Body:", JSON.stringify(req.body));
-  const { start_location, end_location, scheduled_time } = req.body;
-  if (!start_location || !scheduled_time) {
+  const { start_location: rawStartLocation, end_location: rawEndLocation, scheduled_time } = req.body;
+  if (!rawStartLocation || !scheduled_time) {
     return res.status(400).json({ error: 'start_location and scheduled_time are required' });
   }
+
+  const start_location = normalizeMumbaiLocation(rawStartLocation);
+  const end_location = normalizeMumbaiLocation(rawEndLocation || rawStartLocation);
 
   try {
     // Identify requesting employee
@@ -257,7 +260,7 @@ router.post('/trips', verifyToken, async (req, res) => {
     if (mapsEnabled) {
       matchResult = await findBestRouteWithMaps({
         startLocation: start_location,
-        endLocation: end_location || start_location,
+        endLocation: end_location,
         scheduledTime: scheduled_time,
         activeRoutes: processedRoutes,
         vehicleCapacities: passengerCounts,
@@ -265,7 +268,7 @@ router.post('/trips', verifyToken, async (req, res) => {
     } else {
       matchResult = findBestRoute({
         startLocation: start_location,
-        endLocation: end_location || start_location,
+        endLocation: end_location,
         scheduledTime: scheduled_time,
         activeRoutes: processedRoutes,
         vehicleCapacities: passengerCounts,
@@ -312,13 +315,13 @@ router.post('/trips', verifyToken, async (req, res) => {
       driver_id = availDriver.rows[0].driver_id;
       vehicle_id = availDriver.rows[0].vehicle_id;
       matchMethod = 'new_route';
-      const routeName = `${start_location} → ${end_location || start_location}`;
+      const routeName = `${start_location} → ${end_location}`;
 
       // --- Google Maps Polyline ---
       const { getDirections } = await import('../services/googleMaps.js');
       let polyline = '';
       try {
-          const directions = await getDirections(start_location, end_location || start_location);
+          const directions = await getDirections(start_location, end_location);
           polyline = directions.polyline;
       } catch (e) {
           console.warn("Directions API failed during route creation:", e.message);
@@ -331,7 +334,7 @@ router.post('/trips', verifyToken, async (req, res) => {
           (SELECT capacity FROM vehicles WHERE id = $5), 10
         ))
         RETURNING *
-      `, [routeName, start_location, end_location || start_location, driver_id, vehicle_id, polyline]);
+      `, [routeName, start_location, end_location, driver_id, vehicle_id, polyline]);
 
       route_id = newRoute.rows[0].id;
     }
@@ -340,7 +343,7 @@ router.post('/trips', verifyToken, async (req, res) => {
     let durationSeconds = 600; // 10 min fallback
     let distanceMeters = 0;
     try {
-        const distData = await getDistanceMatrix(start_location, end_location || start_location);
+        const distData = await getDistanceMatrix(start_location, end_location);
         durationSeconds = distData.durationSeconds;
         distanceMeters = distData.distanceMeters;
     } catch (e) {
@@ -364,7 +367,7 @@ router.post('/trips', verifyToken, async (req, res) => {
       RETURNING *
     `, [
       employee_id, driver_id, vehicle_id, route_id,
-      start_location, end_location || start_location,
+      start_location, end_location,
       scheduled_time, matchMethod, durationSeconds, distanceMeters, otp
     ]);
 
@@ -387,7 +390,7 @@ router.post('/trips', verifyToken, async (req, res) => {
 
       if (empEmailResult.rows.length > 0) {
         const email = empEmailResult.rows[0].email;
-        sendTripOTPEmail(email, otp, start_location, end_location || start_location, scheduled_time)
+        sendTripOTPEmail(email, otp, start_location, end_location, scheduled_time)
           .then(() => console.log(`✅ Trip OTP email sent to ${email} (OTP: ${otp})`))
           .catch(err => console.error(`❌ Failed to send trip OTP email to ${email}:`, err));
       }
@@ -594,7 +597,7 @@ router.get('/trips/my-trips', verifyToken, async (req, res) => {
     } else {
       query = `
         SELECT 
-          t.id, t.route_id, t.start_location, t.end_location,
+          t.id, t.route_id, t.start_location, t.end_location, t.otp,
           TO_CHAR(t.scheduled_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS scheduled_time,
           TO_CHAR(t.actual_start_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_start_time,
           TO_CHAR(t.actual_end_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_end_time,
@@ -658,6 +661,17 @@ router.get('/feedback/eligible-trips', verifyToken, async (req, res) => {
 // GET /trips/:id
 router.get('/trips/:id', verifyToken, async (req, res) => {
   try {
+    let accessFilter = '';
+    const params = [req.params.id];
+
+    if (req.user.role === 'driver') {
+      accessFilter = ' AND d.user_id = $2';
+      params.push(req.user.id);
+    } else if (req.user.role !== 'admin') {
+      accessFilter = ' AND e.user_id = $2';
+      params.push(req.user.id);
+    }
+
     const result = await pool.query(
       `SELECT 
          t.*,
@@ -674,8 +688,8 @@ router.get('/trips/:id', verifyToken, async (req, res) => {
        LEFT JOIN drivers d ON d.id = t.driver_id
        LEFT JOIN users du ON du.id = d.user_id
        LEFT JOIN vehicles v ON v.id = t.vehicle_id
-       WHERE t.id = $1`,
-      [req.params.id]
+       WHERE t.id = $1${accessFilter}`,
+      params
     );
 
     if (result.rows.length === 0) {
@@ -709,11 +723,24 @@ router.put('/trips/:id', verifyToken, async (req, res) => {
 router.post('/trips/:id/verify-otp', verifyToken, async (req, res) => {
   const { otp } = req.body;
   if (!otp) return res.status(400).json({ error: 'OTP is required' });
+  if (req.user.role !== 'driver') {
+    return res.status(403).json({ error: 'Only the assigned driver can verify a trip OTP' });
+  }
 
   try {
-    const tripScan = await pool.query('SELECT * FROM trips WHERE id = $1', [req.params.id]);
+    const tripScan = await pool.query(
+      `SELECT t.*
+       FROM trips t
+       JOIN drivers d ON d.id = t.driver_id
+       WHERE t.id = $1 AND d.user_id = $2`,
+      [req.params.id, req.user.id]
+    );
     if (tripScan.rows.length === 0) return res.status(404).json({ error: 'Trip not found' });
     const trip = tripScan.rows[0];
+
+    if (trip.status !== 'scheduled') {
+      return res.status(400).json({ error: 'This trip has already started or is no longer available' });
+    }
 
     if (trip.otp !== otp) {
       return res.status(400).json({ error: 'Invalid OTP' });

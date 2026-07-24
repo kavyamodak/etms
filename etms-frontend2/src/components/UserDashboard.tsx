@@ -81,7 +81,8 @@ export default function UserDashboard() {
               minute: '2-digit',
             }),
             route: `${r.start_location || ''} → ${r.end_location || ''}`,
-            status:
+            status: r.status,
+            statusLabel:
               r.status === 'completed'
                 ? 'Completed'
                 : r.status === 'in_progress'
@@ -119,7 +120,7 @@ export default function UserDashboard() {
 
   const handleLogout = () => {
     logout();
-    window.location.href = '/login';
+    window.location.replace('/login');
   };
 
   const nextActiveTrip = upcomingTrips.find(t =>
@@ -237,9 +238,9 @@ export default function UserDashboard() {
                 </div>
               </div>
 
-              {nextActiveTrip && (nextActiveTrip.status === 'Scheduled' || nextActiveTrip.status === 'In Progress') && (
+              {nextActiveTrip && (nextActiveTrip.status === 'scheduled' || nextActiveTrip.status === 'in_progress') && (
                 <div className="mt-5 flex flex-col gap-3">
-                  {nextActiveTrip.otp && nextActiveTrip.status === 'Scheduled' && (
+                  {nextActiveTrip.otp && nextActiveTrip.status === 'scheduled' && (
                     <div className="bg-black/10 backdrop-blur-md rounded-2xl p-4 flex items-center justify-between border border-white/20 shadow-inner">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-lg shadow-black/10">
@@ -334,12 +335,12 @@ export default function UserDashboard() {
                       <TableCell className="text-gray-800 font-bold py-4">{trip.route}</TableCell>
                       <TableCell className="py-4">
                         <span
-                          className={`px-3 py-1.5 rounded-full inline-block text-xs font-bold  tracking-wider ${trip.status === 'Confirmed' || trip.status === 'Scheduled'
+                          className={`px-3 py-1.5 rounded-full inline-block text-xs font-bold  tracking-wider ${trip.status === 'completed' || trip.status === 'scheduled'
                             ? 'bg-green-100 text-green-700 shadow-sm'
                             : 'bg-orange-100 text-orange-700 shadow-sm'
                             }`}
                         >
-                          {trip.status}
+                          {trip.statusLabel}
                         </span>
                       </TableCell>
                     </TableRow>
