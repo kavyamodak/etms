@@ -164,10 +164,7 @@ export default function RouteMap() {
             trip_data: activeTrips.find((t: any) => t.route_id === r.id)
           }));
       } else {
-        // Employees can review every trip assigned to them. Admin and driver
-        // views remain limited to active trips for live operations.
-        const employeeTrips = user?.role === 'admin' ? activeTrips : userTrips;
-        routesWithData = employeeTrips.map((trip: any) => ({
+        routesWithData = activeTrips.map((trip: any) => ({
           id: trip.id,
           route_name: `${trip.start_location} → ${trip.end_location}`,
           start_location: trip.start_location,

@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
     status VARCHAR(50) CHECK (status IN ('active', 'inactive', 'maintenance')),
     maintenance_cost DECIMAL(10,2) DEFAULT 0,
     fuel_cost DECIMAL(10,2) DEFAULT 0,
+    vehicle_image TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

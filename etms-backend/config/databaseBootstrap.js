@@ -45,6 +45,13 @@ const ensureFeedbackSchema = async () => {
   `);
 };
 
+const ensureVehicleSchema = async () => {
+  await pool.query(`
+    ALTER TABLE vehicles
+      ADD COLUMN IF NOT EXISTS vehicle_image TEXT
+  `);
+};
+
 export const initializeDatabaseIfNeeded = async () => {
   const hasTripsTable = await tableExists("trips");
 
@@ -68,5 +75,6 @@ export const initializeDatabaseIfNeeded = async () => {
   }
 
   await ensureFeedbackSchema();
+  await ensureVehicleSchema();
   return initialized;
 };

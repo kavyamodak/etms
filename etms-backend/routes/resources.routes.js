@@ -350,6 +350,17 @@ router.post('/trips', verifyToken, async (req, res) => {
         console.warn("Distance Matrix failed during trip creation, using fallback", e.message);
     }
 
+    if (route_id && distanceMeters > 0) {
+      await pool.query(
+        `UPDATE routes
+         SET distance = COALESCE(NULLIF(distance, 0), $1),
+             estimated_duration = COALESCE(NULLIF(estimated_duration, 0), $2),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3`,
+        [Number((distanceMeters / 1000).toFixed(1)), Math.ceil(durationSeconds / 60), route_id]
+      );
+    }
+
     // Generate 4-digit OTP
     const otp = Math.floor(1000 + Math.random() * 9000).toString();
     console.log(`\n[OTP] TRIP START: ${otp} for Route ${route_id}\n`);
@@ -472,6 +483,17 @@ router.post('/admin/routes', verifyToken, async (req, res) => {
         console.warn("Admin route creation: Distance Matrix failed", e.message);
     }
 
+    if (distanceMeters > 0) {
+      await client.query(
+        `UPDATE routes
+         SET distance = $1,
+             estimated_duration = $2,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3`,
+        [Number((distanceMeters / 1000).toFixed(1)), Math.ceil(durationSeconds / 60), route_id]
+      );
+    }
+
     // Create trips for each employee
     const trips = [];
     for (const emp_id of employee_ids) {
@@ -544,6 +566,8 @@ router.get('/trips', verifyToken, async (req, res) => {
          TO_CHAR(t.scheduled_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS scheduled_time,
          TO_CHAR(t.actual_start_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_start_time,
          TO_CHAR(t.actual_end_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_end_time,
+         t.total_distance,
+         t.total_duration,
          t.status,
          u.full_name AS employee_name,
          u.email AS employee_email,
@@ -581,6 +605,7 @@ router.get('/trips/my-trips', verifyToken, async (req, res) => {
           TO_CHAR(t.scheduled_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS scheduled_time,
           TO_CHAR(t.actual_start_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_start_time,
           TO_CHAR(t.actual_end_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_end_time,
+          t.total_distance, t.total_duration,
           t.status,
           v.vehicle_number, v.vehicle_type, v.model,
           r.route_name,
@@ -601,6 +626,7 @@ router.get('/trips/my-trips', verifyToken, async (req, res) => {
           TO_CHAR(t.scheduled_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS scheduled_time,
           TO_CHAR(t.actual_start_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_start_time,
           TO_CHAR(t.actual_end_time, 'YYYY-MM-DD"T"HH24:MI:SS') AS actual_end_time,
+          t.total_distance, t.total_duration,
           t.status,
           v.vehicle_number, v.vehicle_type, v.model,
           r.route_name,
@@ -1294,8 +1320,10 @@ router.get('/drivers/me', verifyToken, async (req, res) => {
 
     // 2. All trips assigned to this driver
     const tripsResult = await pool.query(`
-      SELECT t.id, t.start_location, t.end_location, t.scheduled_time,
+      SELECT t.id, t.route_id, t.sequence_number, t.start_location, t.end_location, t.scheduled_time,
              t.actual_start_time, t.actual_end_time, t.status,
+             t.total_distance, t.total_duration,
+             COALESCE(t.driver_id, r.assigned_driver_id) AS driver_id,
              u.full_name AS employee_name,
              v.vehicle_number, v.vehicle_type,
              r.route_name, r.waypoints AS route_waypoints,
@@ -1305,7 +1333,7 @@ router.get('/drivers/me', verifyToken, async (req, res) => {
       LEFT JOIN users u ON u.id = e.user_id
       LEFT JOIN vehicles v ON v.id = t.vehicle_id
       LEFT JOIN routes r ON r.id = t.route_id
-      WHERE t.driver_id = $1
+      WHERE t.driver_id = $1 OR (t.driver_id IS NULL AND r.assigned_driver_id = $1)
       ORDER BY t.scheduled_time DESC
     `, [driver.id]);
 
@@ -2134,6 +2162,16 @@ router.get('/routes', verifyToken, async (req, res) => {
   try {
     let query = `
       SELECT r.*, u.full_name as driver_name,
+        COALESCE(
+          NULLIF(r.distance, 0),
+          (SELECT ROUND(MAX(t.total_distance) / 1000.0, 1) FROM trips t WHERE t.route_id = r.id),
+          0
+        ) AS distance,
+        COALESCE(
+          NULLIF(r.estimated_duration, 0),
+          (SELECT CEIL(MAX(t.total_duration) / 60.0) FROM trips t WHERE t.route_id = r.id),
+          0
+        ) AS estimated_duration,
         CASE 
           WHEN (
             SELECT COUNT(t.id) FROM trips t WHERE t.route_id = r.id
