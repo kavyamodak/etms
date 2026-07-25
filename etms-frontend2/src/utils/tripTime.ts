@@ -32,6 +32,20 @@ function parseTripDateTime(value?: string | Date | null) {
   ));
 }
 
+function formatTripValue(
+  value: Date,
+  locale: string,
+  options: Intl.DateTimeFormatOptions | undefined,
+  defaults: Intl.DateTimeFormatOptions
+) {
+  const usesStyle = Boolean(options?.dateStyle || options?.timeStyle);
+  const formatOptions = usesStyle
+    ? { ...options, timeZone: 'UTC' }
+    : { ...defaults, ...options, timeZone: 'UTC' };
+
+  return new Intl.DateTimeFormat(locale, formatOptions).format(value);
+}
+
 export function formatTripDateTime(
   value?: string | Date | null,
   locale = 'en-IN',
@@ -40,15 +54,13 @@ export function formatTripDateTime(
   const parsed = parseTripDateTime(value);
   if (!parsed) return '';
 
-  return new Intl.DateTimeFormat(locale, {
-    timeZone: 'UTC',
+  return formatTripValue(parsed, locale, options, {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-    ...options,
-  }).format(parsed);
+  });
 }
 
 export function formatTripDate(
@@ -59,13 +71,11 @@ export function formatTripDate(
   const parsed = parseTripDateTime(value);
   if (!parsed) return '';
 
-  return new Intl.DateTimeFormat(locale, {
-    timeZone: 'UTC',
+  return formatTripValue(parsed, locale, options, {
     year: 'numeric',
     month: 'short',
     day: '2-digit',
-    ...options,
-  }).format(parsed);
+  });
 }
 
 export function formatTripTime(
@@ -76,12 +86,10 @@ export function formatTripTime(
   const parsed = parseTripDateTime(value);
   if (!parsed) return '';
 
-  return new Intl.DateTimeFormat(locale, {
-    timeZone: 'UTC',
+  return formatTripValue(parsed, locale, options, {
     hour: '2-digit',
     minute: '2-digit',
-    ...options,
-  }).format(parsed);
+  });
 }
 
 export function getTripTimestamp(value?: string | Date | null) {
